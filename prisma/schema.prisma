@@ -1,0 +1,234 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== AUTH ====================
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String?
+  role      String   @default("user") // admin, operator, user
+  tenantId  String?
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  conversations  Conversation[]
+  calendarEvents CalendarEvent[]
+  financialTxns  FinancialTransaction[]
+  auditLogs      AuditLog[]
+}
+
+// ==================== CORE ENTITIES ====================
+model Tenant {
+  id     String  @id @default(cuid())
+  slug   String  @unique
+  name   String
+  status String  @default("active") // active, inactive, blocked
+  planId String?
+  plan   Plan?   @relation(fields: [planId], references: [id])
+
+  // AI Personality Training - defines how the AI behaves for this tenant
+  aiPersonality Json @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users              User[]
+  agentConfigs       TenantAgentConfig[]
+  integrationConfigs TenantIntegrationConfig[]
+  conversations      Conversation[]
+  calendarEvents     CalendarEvent[]
+  financialTxns      FinancialTransaction[]
+  auditLogs          AuditLog[]
+}
+
+model Plan {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  description String?
+  tier        String   @default("free") // free, basic, pro, enterprise
+  limits      Json     @default("{}")
+  features    Json     @default("{}")
+  billing     Json     @default("{}")
+  status      String   @default("active") // active, deprecated
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenants Tenant[]
+}
+
+model AgentNode {
+  id                   String   @id @default(cuid())
+  slug                 String   @unique
+  name                 String
+  description          String?
+  category             String // productivity, finance, support, sales, operations
+  status               String   @default("active") // active, inactive, beta
+  channelsSupported    String[] @default([])
+  intentsSupported     String[] @default([])
+  requiredIntegrations String[] @default([])
+  optionalIntegrations String[] @default([])
+  permissionsRequired  String[] @default([])
+  planConstraints      Json     @default("{}")
+  behavior             Json     @default("{}")
+  prompts              Json     @default("{}")
+  uiRules              Json     @default("{}")
+  audit                Json     @default("{}")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  tenantConfigs TenantAgentConfig[]
+}
+
+model IntegrationNode {
+  id              String   @id @default(cuid())
+  slug            String   @unique
+  name            String
+  description     String?
+  type            String // calendar, finance, crm, erp, storage, custom
+  auth            Json     @default("{}")
+  capabilities    Json     @default("{}")
+  dataContract    Json     @default("{}")
+  supportedAgents String[] @default([])
+  planConstraints Json     @default("{}")
+  syncStrategy    Json     @default("{}")
+  privacyRules    Json     @default("{}")
+  audit           Json     @default("{}")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenantConfigs TenantIntegrationConfig[]
+}
+
+// ==================== TENANT CONFIGURATION ====================
+model TenantAgentConfig {
+  id                  String    @id @default(cuid())
+  tenantId            String
+  tenant              Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agentSlug           String
+  agent               AgentNode @relation(fields: [agentSlug], references: [slug])
+  enabled             Boolean   @default(true)
+  customPrompt        String?
+  behaviorOverride    Json      @default("{}")
+  allowedIntegrations String[]  @default([])
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@unique([tenantId, agentSlug])
+}
+
+model TenantIntegrationConfig {
+  id              String          @id @default(cuid())
+  tenantId        String
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  integrationSlug String
+  integration     IntegrationNode @relation(fields: [integrationSlug], references: [slug])
+  enabled         Boolean         @default(true)
+  credentialsRef  String?
+  allowedAgents   String[]        @default([])
+  syncSettings    Json            @default("{}")
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@unique([tenantId, integrationSlug])
+}
+
+// ==================== CONVERSATIONAL CONTEXT ====================
+model Conversation {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel   String   @default("web") // web, whatsapp, instagram, facebook, tiktok
+  status    String   @default("active") // active, closed
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  turns   ConversationTurn[]
+  context ConversationContext?
+}
+
+model ConversationTurn {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String // user, assistant, system
+  content        String
+  metadata       Json         @default("{}")
+  createdAt      DateTime     @default(now())
+}
+
+model ConversationContext {
+  id             String       @id @default(cuid())
+  conversationId String       @unique
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  summary        String?
+  activeAgent    String?
+  handoffHistory Json         @default("[]")
+  pendingAction  Json?
+  updatedAt      DateTime     @updatedAt
+}
+
+// ==================== AUDIT & LOGS ====================
+model AuditLog {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  agentSlug  String?
+  action     String
+  entityType String
+  entityId   String?
+  before     Json?
+  after      Json?
+  createdAt  DateTime @default(now())
+}
+
+// ==================== MOCK DATA (INTEGRATIONS) ====================
+model CalendarEvent {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  startTime   DateTime
+  endTime     DateTime
+  isPrivate   Boolean  @default(false)
+  status      String   @default("confirmed") // confirmed, tentative, cancelled
+  category    String? // work, personal, health
+  location    String?
+  reminder    Int? // minutes before
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model FinancialTransaction {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  type        String // income, expense, transfer
+  amount      Float
+  currency    String   @default("BRL")
+  category    String? // sales, marketing, operations, payroll, etc.
+  description String?
+  date        DateTime
+  status      String   @default("pending") // pending, completed, cancelled
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
