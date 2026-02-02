@@ -1,6 +1,5 @@
 generator client {
-  provider      = "prisma-client-js"
-  binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]
+  provider = "prisma-client-js"
 }
 
 datasource db {
@@ -14,40 +13,98 @@ model User {
   email     String   @unique
   password  String
   name      String?
-  role      String   @default("user") // admin, operator, user
-  tenantId  String?
-  tenant    Tenant?  @relation(fields: [tenantId], references: [id])
+  role      String   @default("user")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  conversations  Conversation[]
-  calendarEvents CalendarEvent[]
-  financialTxns  FinancialTransaction[]
-  auditLogs      AuditLog[]
+  tenantId String?
+  tenant   Tenant? @relation(fields: [tenantId], references: [id])
+
+  auditLogs    AuditLog[]
+  chats        Conversation[]  @relation("UserChats")
+  promoQueries PromoQuery[]
+  promoAlerts  PromoAlertLog[]
 }
 
-// ==================== CORE ENTITIES ====================
 model Tenant {
-  id     String  @id @default(cuid())
-  slug   String  @unique
-  name   String
-  status String  @default("active") // active, inactive, blocked
-  planId String?
-  plan   Plan?   @relation(fields: [planId], references: [id])
-
-  // AI Personality Training - defines how the AI behaves for this tenant
-  aiPersonality Json @default("{}")
+  id                 String                    @id @default(cuid())
+  slug               String                    @unique
+  name               String
+  status             String                    @default("active")
+  planId             String
+  plan               Plan                      @relation(fields: [planId], references: [id])
+  users              User[]
+  auditLogs          AuditLog[]
+  agents             AgentNode[]
+  conversations      Conversation[]
+  aiUsageLogs       AIUsageLog[]
+  agentConfigs       TenantAgentConfig[]
+  integrationConfigs TenantIntegrationConfig[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users              User[]
-  agentConfigs       TenantAgentConfig[]
-  integrationConfigs TenantIntegrationConfig[]
-  conversations      Conversation[]
-  calendarEvents     CalendarEvent[]
-  financialTxns      FinancialTransaction[]
-  auditLogs          AuditLog[]
+  aiTokensUsedMonthly  Int @default(0)
+  aiTokensReserved     Int @default(0)
+  aiTokensExtraBalance Int @default(0)
+
+  aiPersonality Json? @default("{}") // Personalidade Global da IA
+
+  // Contexto de Negócio (Para Extração de Conhecimento)
+  businessSector   String?
+  businessType     String?
+  glossary         Json?    @default("[]") // Termos específicos
+  productsServices Json?    @default("[]") // Catálogo simplificado
+}
+
+// ... existing Plan model ...
+
+// ==================== KNOWLEDGE & MEMORY ====================
+
+model KnowledgeFact {
+  id          String   @id @default(cuid())
+  tenantId    String
+  type        String // user_preference, business_context, product_info
+  category    String?
+  entity      String?
+  fact        String   @db.Text
+  source      String? // conversationId
+  confidence  Float    @default(1.0)
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, type])
+}
+
+model UserProfile {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  tenantId      String
+  preferences   Json     @default("{}")
+  interests     String[]
+  sentiment     String   @default("neutral")
+  lastIntent    String?
+  lastAgentUsed String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model ConversationEmbedding {
+  id             String   @id @default(cuid())
+  conversationId String
+  turnId         String?
+  tenantId       String
+  userId         String
+  text           String   @db.Text
+  embedding      Unsupported("vector(1536)")? // Requires pgvector
+  agentUsed      String?
+  channel        String?
+  intent         String?
+  sentiment      String?
+  topics         String[]
+  createdAt      DateTime @default(now())
+
+  @@index([tenantId, userId])
 }
 
 model Plan {
@@ -55,180 +112,230 @@ model Plan {
   slug        String   @unique
   name        String
   description String?
-  tier        String   @default("free") // free, basic, pro, enterprise
-  limits      Json     @default("{}")
-  features    Json     @default("{}")
-  billing     Json     @default("{}")
-  status      String   @default("active") // active, deprecated
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  tier        String   @default("free") // free, pro, enterprise
+  limits      Json     @default("{}") // Contém limites, features e billing
+  tenants     Tenant[]
+}
 
-  tenants Tenant[]
+model AuditLog {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  agentSlug  String?
+  action     String // create, update, delete, login...
+  entityType String // user, tenant, conversation...
+  entityId   String?
+  before     Json?
+  after      Json?
+  metadata   Json? // Detalhes da ação
+  createdAt  DateTime @default(now())
 }
 
 model AgentNode {
-  id                   String   @id @default(cuid())
-  slug                 String   @unique
-  name                 String
-  description          String?
-  category             String // productivity, finance, support, sales, operations
-  status               String   @default("active") // active, inactive, beta
-  channelsSupported    String[] @default([])
-  intentsSupported     String[] @default([])
-  requiredIntegrations String[] @default([])
-  optionalIntegrations String[] @default([])
-  permissionsRequired  String[] @default([])
-  planConstraints      Json     @default("{}")
-  behavior             Json     @default("{}")
-  prompts              Json     @default("{}")
-  uiRules              Json     @default("{}")
-  audit                Json     @default("{}")
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  id          String  @id @default(cuid())
+  slug        String  @unique
+  name        String
+  description String?
+  category    String // sales, support, finance...
+  status      String  @default("active")
+  config      Json    @default("{}") // Contém behavior, prompts, permissions, etc.
 
+  tenantId String?
+  tenant   Tenant? @relation(fields: [tenantId], references: [id])
+
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
   tenantConfigs TenantAgentConfig[]
 }
 
 model IntegrationNode {
-  id              String   @id @default(cuid())
-  slug            String   @unique
-  name            String
-  description     String?
-  type            String // calendar, finance, crm, erp, storage, custom
-  auth            Json     @default("{}")
-  capabilities    Json     @default("{}")
-  dataContract    Json     @default("{}")
-  supportedAgents String[] @default([])
-  planConstraints Json     @default("{}")
-  syncStrategy    Json     @default("{}")
-  privacyRules    Json     @default("{}")
-  audit           Json     @default("{}")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  tenantConfigs TenantIntegrationConfig[]
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  description String?
+  type        String // calendar, finance, crm...
+  status      String   @default("active")
+  config      Json     @default("{}") // Scopes, auth, capabilities, etc.
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
-// ==================== TENANT CONFIGURATION ====================
-model TenantAgentConfig {
-  id                  String    @id @default(cuid())
-  tenantId            String
-  tenant              Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  agentSlug           String
-  agent               AgentNode @relation(fields: [agentSlug], references: [slug])
-  enabled             Boolean   @default(true)
-  customPrompt        String?
-  behaviorOverride    Json      @default("{}")
-  allowedIntegrations String[]  @default([])
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-
-  @@unique([tenantId, agentSlug])
-}
-
-model TenantIntegrationConfig {
-  id              String          @id @default(cuid())
-  tenantId        String
-  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  integrationSlug String
-  integration     IntegrationNode @relation(fields: [integrationSlug], references: [slug])
-  enabled         Boolean         @default(true)
-  credentialsRef  String?
-  allowedAgents   String[]        @default([])
-  syncSettings    Json            @default("{}")
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-
-  @@unique([tenantId, integrationSlug])
-}
-
-// ==================== CONVERSATIONAL CONTEXT ====================
 model Conversation {
-  id        String   @id @default(cuid())
-  tenantId  String
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  channel   String   @default("web") // web, whatsapp, instagram, facebook, tiktok
-  status    String   @default("active") // active, closed
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+  userId   String
+  user     User   @relation("UserChats", fields: [userId], references: [id])
+  channel  String @default("web") // web, whatsapp, api
+  status   String @default("active")
+
+  messages Message[]
+  turns    ConversationTurn[]
+  context  ConversationContext?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
 
-  turns   ConversationTurn[]
-  context ConversationContext?
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  role           String // user, assistant, system
+  content        String       @db.Text
+  metadata       Json?
+
+  createdAt DateTime @default(now())
+}
+
+// ==================== CHAT ENGINE ====================
+
+model ConversationContext {
+  id             String       @id @default(cuid())
+  conversationId String       @unique
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  summary        String? // Resumo da conversa até agora
+  activeAgent    String? // Agente ativo no momento
+  handoffHistory Json?        @default("[]") // Histórico de trocas
+  pendingAction  Json? // Ação pendente (ex: tool call)
+
+  updatedAt DateTime @updatedAt
 }
 
 model ConversationTurn {
   id             String       @id @default(cuid())
   conversationId String
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  role           String // user, assistant, system
+  role           String // user, assistant
   content        String
-  metadata       Json         @default("{}")
-  createdAt      DateTime     @default(now())
+  metadata       Json? // { channel, isTestMode, etc }
+
+  createdAt DateTime @default(now())
 }
 
-model ConversationContext {
-  id             String       @id @default(cuid())
-  conversationId String       @unique
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  summary        String?
-  activeAgent    String?
-  handoffHistory Json         @default("[]")
-  pendingAction  Json?
-  updatedAt      DateTime     @updatedAt
+// ==================== GOVERNANCE ====================
+
+model TenantAgentConfig {
+  id                  String    @id @default(cuid())
+  tenantId            String
+  tenant              Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agentSlug           String
+  agent               AgentNode @relation(fields: [agentSlug], references: [slug], onDelete: Cascade)
+  enabled             Boolean   @default(false)
+  customPrompt        String?
+  behaviorOverride    Json?     @default("{}")
+  allowedIntegrations String[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, agentSlug])
 }
 
-// ==================== AUDIT & LOGS ====================
-model AuditLog {
-  id         String   @id @default(cuid())
-  tenantId   String
-  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  userId     String?
-  user       User?    @relation(fields: [userId], references: [id])
-  agentSlug  String?
-  action     String
-  entityType String
-  entityId   String?
-  before     Json?
-  after      Json?
-  createdAt  DateTime @default(now())
+model TenantIntegrationConfig {
+  id              String   @id @default(cuid())
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  integrationSlug String
+  enabled         Boolean  @default(false)
+  config          Json?    @default("{}")
+  allowedAgents   String[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, integrationSlug])
 }
 
-// ==================== MOCK DATA (INTEGRATIONS) ====================
-model CalendarEvent {
-  id          String   @id @default(cuid())
-  tenantId    String
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  title       String
-  description String?
-  startTime   DateTime
-  endTime     DateTime
-  isPrivate   Boolean  @default(false)
-  status      String   @default("confirmed") // confirmed, tentative, cancelled
-  category    String? // work, personal, health
-  location    String?
-  reminder    Int? // minutes before
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+// ==================== PROMO HUNTER ====================
+
+model PromoSource {
+  id        String   @id @default(uuid())
+  name      String
+  type      String // api, scrape, manual
+  baseUrl   String?
+  enabled   Boolean  @default(true)
+  config    Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  results PromoResult[]
 }
 
-model FinancialTransaction {
-  id          String   @id @default(cuid())
-  tenantId    String
-  tenant      Tenant   @relation(fields: [tenantId], references: [id])
-  userId      String?
-  user        User?    @relation(fields: [userId], references: [id])
-  type        String // income, expense, transfer
-  amount      Float
-  currency    String   @default("BRL")
-  category    String? // sales, marketing, operations, payroll, etc.
-  description String?
-  date        DateTime
-  status      String   @default("pending") // pending, completed, cancelled
-  metadata    Json     @default("{}")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+model PromoQuery {
+  id                 String   @id @default(uuid())
+  userId             String
+  user               User     @relation(fields: [userId], references: [id])
+  queryName          String
+  keywords           String[]
+  category           String?
+  brands             String[]
+  stores             String[]
+  geo                Json?
+  minPrice           Decimal?
+  maxPrice           Decimal?
+  minDiscountPercent Decimal?
+  notifyChannels     String[]
+  frequencyMinutes   Int      @default(60)
+  enabled            Boolean  @default(true)
+  createdAt          DateTime @default(now())
+
+  results PromoResult[]
+  alerts  PromoAlertLog[]
+}
+
+model PromoResult {
+  id       String       @id @default(uuid())
+  queryId  String?
+  query    PromoQuery?  @relation(fields: [queryId], references: [id])
+  sourceId String?
+  source   PromoSource? @relation(fields: [sourceId], references: [id])
+
+  title           String
+  price           Decimal
+  originalPrice   Decimal?
+  discountPercent Decimal?
+  url             String
+  store           String
+  imageUrl        String?
+  detectedAt      DateTime @default(now())
+  score           Int      @default(0)
+  verdict         String? // excelente, boa, enganosa
+  rationale       String?
+  raw             Json?
+
+  alerts PromoAlertLog[]
+}
+
+model PromoAlertLog {
+  id       String       @id @default(uuid())
+  userId   String
+  user     User         @relation(fields: [userId], references: [id])
+  queryId  String?
+  query    PromoQuery?  @relation(fields: [queryId], references: [id])
+  resultId String?
+  result   PromoResult? @relation(fields: [resultId], references: [id])
+
+  channel String
+  status  String // sent, failed, skipped
+  sentAt  DateTime @default(now())
+  error   String?
+}
+
+model AIUsageLog {
+  id               String   @id @default(cuid())
+  tenantId         String
+  userId           String?
+  conversationId   String?
+  model            String
+  promptTokens     Int
+  completionTokens Int
+  totalTokens      Int
+  purpose          String?  // orchestrator, sales, support, etc.
+  createdAt        DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
 }

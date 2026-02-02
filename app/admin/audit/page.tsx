@@ -117,8 +117,8 @@ export default function AuditPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {(logs ?? [])?.map((log) => (
-                <tr key={log?.id} className="hover:bg-slate-50 transition-colors">
+              {(Array.isArray(logs) ? logs : []).map((log) => (
+                <tr key={log?.id || Math.random()} className="hover:bg-slate-50 transition-colors">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2 text-sm">
                       <Calendar className="w-4 h-4 text-slate-400" />

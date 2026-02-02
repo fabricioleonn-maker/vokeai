@@ -27,6 +27,12 @@ export interface TenantContext {
     enabled: boolean;
     allowedAgents: string[];
   }>;
+  aiUsage: {
+    state: 'NORMAL' | 'WARNING' | 'EXHAUSTED';
+    usageRatio: number;
+    monthlyLimit: number;
+    totalUsed: number;
+  };
 }
 
 export async function getTenantContext(tenantId: string, isTestMode: boolean = false): Promise<TenantContext | null> {
@@ -40,6 +46,13 @@ export async function getTenantContext(tenantId: string, isTestMode: boolean = f
   });
 
   if (!tenant) return null;
+
+  // Usage and Quota Check
+  const monthlyLimit = (tenant.plan?.limits as any)?.aiTokensIncluded || 50000;
+  const used = (tenant as any).aiTokensUsedMonthly || 0;
+  const extra = (tenant as any).aiTokensExtraBalance || 0;
+  const totalCapacity = monthlyLimit + extra;
+  const usageRatio = totalCapacity > 0 ? used / totalCapacity : 1;
 
   const agentConfigs = new Map<string, {
     enabled: boolean;
@@ -95,12 +108,18 @@ export async function getTenantContext(tenantId: string, isTestMode: boolean = f
       name: tenant.plan?.name ?? '',
       tier: isTestMode ? 'enterprise' : (tenant.plan?.tier ?? 'free'),
       limits: isTestMode ? { messagesPerMonth: 999999, agentsCount: 10 } : ((tenant.plan?.limits as Record<string, unknown>) ?? {}),
-      features: isTestMode ? { all: true } : ((tenant.plan?.features as Record<string, unknown>) ?? {})
+      features: isTestMode ? { all: true } : (((tenant.plan as any)?.features as Record<string, unknown>) ?? {})
     } : null,
     enabledAgents,
     enabledIntegrations,
     agentConfigs,
-    integrationConfigs
+    integrationConfigs,
+    aiUsage: {
+      state: used >= totalCapacity ? 'EXHAUSTED' : (usageRatio >= 0.8 ? 'WARNING' : 'NORMAL'),
+      usageRatio,
+      monthlyLimit,
+      totalUsed: used
+    }
   };
 }
 

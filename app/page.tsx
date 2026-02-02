@@ -48,8 +48,8 @@ export default function HomePage() {
     <div className="min-h-screen bg-white text-slate-900 selection:bg-cyan-100 font-sans">
       {/* Background Decor */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-cyan-100/50 blur-[120px] rounded-full" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-100/50 blur-[120px] rounded-full" />
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-cyan-100/30 blur-[80px] rounded-full" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-100/30 blur-[80px] rounded-full" />
       </div>
 
       <motion.header
@@ -165,18 +165,13 @@ export default function HomePage() {
         <section className="py-24 bg-slate-50/50">
           <div className="max-w-7xl mx-auto px-6">
             <div className="grid lg:grid-cols-2 gap-16 items-center">
-              <motion.div
-                initial={{ opacity: 0, x: -30 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.7 }}
-              >
+              <div>
                 <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-6 leading-tight">
                   Sua IA, Suas Regras,<br />
                   <span className="text-cyan-600">Personalidade Única.</span>
                 </h2>
                 <p className="text-lg text-slate-600 mb-8 leading-relaxed">
-                  O grande diferencial do Sistema Matriz é o <strong>Treinamento de Personalidade</strong>.
+                  O grande diferencial da <strong>Voke AI</strong> é o <strong>Treinamento de Personalidade</strong>.
                   Não entregamos apenas código, entregamos comportamento.
                 </p>
                 <ul className="space-y-4">
@@ -194,15 +189,9 @@ export default function HomePage() {
                     </li>
                   ))}
                 </ul>
-              </motion.div>
+              </div>
 
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                whileInView={{ opacity: 1, scale: 1 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.7 }}
-                className="relative"
-              >
+              <div className="relative">
                 <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/10 to-blue-500/10 rounded-3xl blur-2xl" />
                 <div className="relative bg-white p-8 rounded-3xl border border-slate-200 shadow-2xl">
                   <div className="flex items-center gap-4 mb-6 pb-6 border-b border-slate-100">
@@ -225,7 +214,7 @@ export default function HomePage() {
                     </div>
                   </div>
                 </div>
-              </motion.div>
+              </div>
             </div>
           </div>
         </section>
@@ -262,12 +251,8 @@ export default function HomePage() {
                   bg: 'bg-amber-50'
                 }
               ].map((feature, i) => (
-                <motion.div
+                <div
                   key={i}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: i * 0.1 }}
                   className="p-8 rounded-3xl bg-white border border-slate-100 shadow-sm hover:shadow-xl transition-all duration-300 group text-center"
                 >
                   <div className={`w-14 h-14 rounded-2xl ${feature.bg} flex items-center justify-center mb-6 group-hover:scale-110 transition-transform mx-auto`}>
@@ -275,7 +260,7 @@ export default function HomePage() {
                   </div>
                   <h3 className="text-xl font-bold text-slate-900 mb-3">{feature.title}</h3>
                   <p className="text-slate-600 leading-relaxed">{feature.desc}</p>
-                </motion.div>
+                </div>
               ))}
             </div>
           </div>
@@ -283,12 +268,7 @@ export default function HomePage() {
 
         {/* Final CTA */}
         <section className="py-24 px-6">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            whileInView={{ opacity: 1, scale: 1 }}
-            viewport={{ once: true }}
-            className="max-w-5xl mx-auto p-12 md:p-20 rounded-[3rem] bg-slate-900 text-center relative overflow-hidden"
-          >
+          <div className="max-w-5xl mx-auto p-12 md:p-20 rounded-[3rem] bg-slate-900 text-center relative overflow-hidden">
             <div className="absolute top-0 right-0 w-64 h-64 bg-cyan-500/10 blur-[100px] rounded-full" />
             <div className="absolute bottom-0 left-0 w-64 h-64 bg-blue-500/10 blur-[100px] rounded-full" />
 
@@ -312,7 +292,7 @@ export default function HomePage() {
             <p className="mt-10 text-slate-400 font-medium">
               Teste todas as funcionalidades agora, sem compromisso.
             </p>
-          </motion.div>
+          </div>
         </section>
       </main>
 
@@ -322,7 +302,7 @@ export default function HomePage() {
           <div className="flex items-center gap-8 text-sm font-bold text-slate-600">
             <Link href="#" className="hover:text-cyan-600 transition-colors">Termos</Link>
             <Link href="#" className="hover:text-cyan-600 transition-colors">Privacidade</Link>
-            <Link href="mailto:contato@sistemamatriz.com" className="hover:text-cyan-600 transition-colors">Suporte</Link>
+            <Link href="mailto:contato@vokeai.com.br" className="hover:text-cyan-600 transition-colors">Suporte</Link>
           </div>
         </div>
       </footer>

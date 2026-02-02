@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
     const tenantId = searchParams.get('tenantId');
     const agentSlug = searchParams.get('agentSlug');
     const action = searchParams.get('action');
-    const limit = parseInt(searchParams.get('limit') ?? '100', 10);
+    const limit = parseInt(searchParams.get('limit') ?? '50', 10);
 
     const logs = await prisma.auditLog.findMany({
       where: {

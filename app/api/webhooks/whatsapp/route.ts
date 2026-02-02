@@ -9,7 +9,7 @@ import { decrypt } from '@/lib/integrations/encryption';
 
 // Webhook verification (usado por Meta e alguns BSPs)
 export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams();
+  const searchParams = request.nextUrl.searchParams;
 
   // WhatsApp verification challenge
   const mode = searchParams.get('hub.mode');
@@ -159,16 +159,24 @@ async function getTenantConfig(phoneNumberId: string, provider: string) {
     select: {
       id: true,
       tenantId: true,
-      credentialsRef: true,
-      syncSettings: true,
+      config: true,
       integrationSlug: true
     }
   });
 
-  for (const config of configs) {
-    const syncSettings = config.syncSettings as Record<string, any>;
-    const configProvider = syncSettings?.provider;
-    const configPhoneNumber = syncSettings?.phone_number_id;
+  for (const configItem of configs) {
+    const settings = (configItem.config as any)?.syncSettings || {};
+    const creds = (configItem.config as any)?.credentialsRef;
+
+    // Attach to object for cleaner return (simulating flat structure)
+    const enrichedConfig = {
+      ...configItem,
+      credentialsRef: creds,
+      syncSettings: settings
+    };
+
+    const configProvider = settings?.provider;
+    const configPhoneNumber = settings?.phone_number_id;
 
     // Match by phone number and optionally provider
     if (configPhoneNumber === phoneNumberId) {
@@ -176,7 +184,7 @@ async function getTenantConfig(phoneNumberId: string, provider: string) {
       if (configProvider && configProvider !== provider) {
         continue;
       }
-      return config;
+      return enrichedConfig;
     }
   }
 

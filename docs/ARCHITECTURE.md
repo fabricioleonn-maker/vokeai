@@ -1,18 +1,18 @@
-# Arquitetura do Sistema Matriz
+# Arquitetura da Voke AI
 
 ## Visão Geral
 
-O Sistema Matriz é uma **plataforma SaaS multi-tenant** que governa um hub universal de agentes de IA. Ele atua como o "source of truth" que controla quais agentes existem, quais integrações estão disponíveis, quais clientes (tenants) podem usar quais recursos, e com quais permissões.
+A Voke AI é uma **plataforma SaaS multi-tenant** que governa um hub universal de agentes de IA. Ele atua como o "source of truth" que controla quais agentes existem, quais integrações estão disponíveis, quais clientes (tenants) podem usar quais recursos, e com quais permissões.
 
 ## Diagrama de Componentes
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      SISTEMA MATRIZ MVP                        │
+│                        VOKE AI MVP                             │
 ├─────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  ┌─────────────────┐   ┌─────────────────┐   ┌─────────────────┐  │
-│  │   CHANNELS     │   │   CORE (MATRIZ) │   │    AGENTS       │  │
+│  │   CHANNELS     │   │   CORE (VOKE AI)│   │    AGENTS       │  │
 │  ├─────────────────┤   ├─────────────────┤   ├─────────────────┤  │
 │  │ • Web Chat     │   │ • Governance    │   │ • Orchestrator  │  │
 │  │ • WhatsApp*    │──▶│ • Permissions   │──▶│ • Secretary     │  │
@@ -76,7 +76,7 @@ O Sistema Matriz é uma **plataforma SaaS multi-tenant** que governa um hub univ
 ### Core (lib/core)
 - **Governança**: Validação de permissões por tenant/plano
 - **Contexto**: Gerenciamento de contexto de conversa
-- **Repositórios**: Acesso a dados do sistema matriz
+- **Repositórios**: Acesso a dados da Voke AI
 
 ### Agents (lib/agents)
 - **Orchestrator**: Roteamento, handoff, unificação de respostas

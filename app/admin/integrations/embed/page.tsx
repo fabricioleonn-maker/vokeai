@@ -11,16 +11,16 @@ export default function EmbedIntegrationPage() {
   const [tenantId, setTenantId] = useState('');
   const [primaryColor, setPrimaryColor] = useState('#06B6D4');
   const [saving, setSaving] = useState(false);
-  
+
   const user = session?.user as { tenantId?: string } | undefined;
-  
+
   useEffect(() => {
     if (user?.tenantId) {
       setTenantId(user.tenantId);
       loadSettings();
     }
   }, [user?.tenantId]);
-  
+
   const loadSettings = async () => {
     if (!user?.tenantId) return;
     try {
@@ -33,7 +33,7 @@ export default function EmbedIntegrationPage() {
       console.error('Failed to load settings:', error);
     }
   };
-  
+
   const saveSettings = async () => {
     if (!user?.tenantId) return;
     setSaving(true);
@@ -51,27 +51,27 @@ export default function EmbedIntegrationPage() {
       setSaving(false);
     }
   };
-  
-  const embedCode = `<!-- Sistema Matriz Chat Widget -->
+
+  const embedCode = `<!-- Voke AI Chat Widget -->
 <iframe
   src="${typeof window !== 'undefined' ? window.location.origin : ''}/embed/${tenantId}"
   style="position: fixed; bottom: 20px; right: 20px; width: 380px; height: 600px; border: none; border-radius: 16px; box-shadow: 0 4px 24px rgba(0,0,0,0.15); z-index: 9999;"
   allow="microphone"
 ></iframe>`;
-  
+
   const copyCode = () => {
     navigator.clipboard.writeText(embedCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
-  
+
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Integração de Chat</h1>
         <p className="text-gray-500 mt-1">Adicione o chat ao seu site com apenas uma linha de código</p>
       </div>
-      
+
       {/* Customization */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -87,7 +87,7 @@ export default function EmbedIntegrationPage() {
             <p className="text-sm text-gray-500">Customize a aparência do chat</p>
           </div>
         </div>
-        
+
         <div className="grid md:grid-cols-2 gap-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -108,7 +108,7 @@ export default function EmbedIntegrationPage() {
               />
             </div>
           </div>
-          
+
           <div className="flex items-end">
             <button
               onClick={saveSettings}
@@ -120,7 +120,7 @@ export default function EmbedIntegrationPage() {
           </div>
         </div>
       </motion.div>
-      
+
       {/* Embed Code */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -155,12 +155,12 @@ export default function EmbedIntegrationPage() {
             )}
           </button>
         </div>
-        
+
         <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto text-sm">
           <code>{embedCode}</code>
         </pre>
       </motion.div>
-      
+
       {/* Preview */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -188,7 +188,7 @@ export default function EmbedIntegrationPage() {
             Abrir em Nova Aba
           </a>
         </div>
-        
+
         <div className="bg-gray-100 rounded-lg p-4 flex justify-center">
           <div className="w-[380px] h-[500px] rounded-xl overflow-hidden shadow-xl">
             <iframe
@@ -199,7 +199,7 @@ export default function EmbedIntegrationPage() {
           </div>
         </div>
       </motion.div>
-      
+
       {/* Instructions */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}

@@ -5,90 +5,32 @@ import { matchesFinanceIntent } from './finance-agent';
 import { matchesSupportIntent, shouldHandoffToSales, shouldHandoffToTechnical } from './support-agent';
 import { matchesSalesIntent } from './sales-agent';
 import { matchesProductivityIntent } from './productivity-agent';
+import { matchesPromoIntent, processPromoMessage } from './promo-hunter';
 import { callLLM, getConversationHistory, AGENT_PROMPTS, type LLMMessage } from './llm-service';
 import type { AgentContext, OrchestratorResponse, PendingAction, AIPersonality } from '@/lib/types';
 import { Prisma } from '@prisma/client';
+import { UsageService } from '@/lib/core/usage';
 
 // Intent categories for conversational routing
 type IntentCategory = 'curiosity' | 'comparison' | 'decision' | 'execution' | 'complaint' | 'question' | 'price' | 'plan' | 'general';
 
-const AGENT_CAPABILITIES: Record<string, { name: string; description: string; benefits: string[]; useCases: string[] }> = {
-  'agent.secretary': {
-    name: 'Agenda Inteligente',
-    description: 'gestão de agenda e agendamentos',
-    benefits: [
-      'Agendamento automático de reuniões',
-      'Lembretes e notificações',
-      'Integração com Google Calendar',
-      'Reagendamento inteligente'
-    ],
-    useCases: [
-      'Você recebe muitos contatos por dia e precisa organizar',
-      'Quer automatizar marcação de reuniões e consultas',
-      'Precisa de lembretes automáticos para compromissos'
-    ]
-  },
-  'agent.finance': {
-    name: 'Controle Financeiro',
-    description: 'controle financeiro e transações',
-    benefits: [
-      'Registro de receitas e despesas',
-      'Relatórios financeiros automáticos',
-      'Alertas de contas a pagar',
-      'Integração bancária'
-    ],
-    useCases: [
-      'Você quer ter visão clara das finanças do negócio',
-      'Precisa controlar entradas e saídas automaticamente',
-      'Quer relatórios sem precisar de contador toda hora'
-    ]
-  },
-  'agent.support.n1': {
-    name: 'Atendimento',
-    description: 'suporte ao cliente',
-    benefits: [
-      'Respostas instantâneas 24/7',
-      'FAQs inteligentes',
-      'Encaminhamento automático',
-      'Histórico de atendimentos'
-    ],
-    useCases: [
-      'Você recebe muitas perguntas repetitivas',
-      'Quer atender clientes fora do horário comercial',
-      'Precisa organizar demandas por prioridade'
-    ]
-  },
-  'agent.sales': {
-    name: 'Vendas',
-    description: 'qualificação de leads e vendas',
-    benefits: [
-      'Qualificação automática de leads',
-      'Follow-up personalizado',
-      'Scripts de vendas inteligentes',
-      'Análise de objeções'
-    ],
-    useCases: [
-      'Você quer fechar mais vendas com menos esforço',
-      'Precisa qualificar leads antes de investir tempo',
-      'Quer follow-ups automáticos que funcionam'
-    ]
-  },
-  'agent.productivity': {
-    name: 'Produtividade',
-    description: 'criação de conteúdo e documentos',
-    benefits: [
-      'Geração de e-mails profissionais',
-      'Criação de planilhas',
-      'Checklists automáticas',
-      'Resumos e relatórios'
-    ],
-    useCases: [
-      'Você perde tempo escrevendo e-mails repetitivos',
-      'Precisa criar documentos e relatórios rapidamente',
-      'Quer templates prontos para usar no dia a dia'
-    ]
-  }
-};
+// Helper to get agent info from DB
+async function getAgentInfo(agentSlug: string) {
+  const agent = await prisma.agentNode.findUnique({
+    where: { slug: agentSlug }
+  });
+
+  if (!agent) return null;
+
+  const config = agent.config as Record<string, any>; // Type assertion since it's Json
+
+  return {
+    name: agent.name,
+    description: agent.description || 'Assistente Virtual',
+    benefits: (config.benefits as string[]) || ['Assistência especializada'],
+    useCases: (config.useCases as string[]) || ['Ajuda geral']
+  };
+}
 
 export async function processMessage(
   tenantId: string,
@@ -113,6 +55,13 @@ export async function processMessage(
       message: 'Sua conta está temporariamente inativa. Entre em contato com o suporte para mais informações.',
       metadata: { error: 'tenant_inactive' }
     };
+  }
+
+  // Quota Enforcement (Soft Block)
+  if (!isTestMode && tenantContext.aiUsage.state === 'EXHAUSTED') {
+    // In exhausted state, we only allow conversational guidance via LimitedPrompt
+    // Handled inside processWithLLM to maintain "single voice" but we can add a check here if needed.
+    // For now, we allow the message to proceed but it will be directed by the LimitedMode instructions.
   }
 
   // 1.1 Load AI Personality (ALWAYS applied)
@@ -189,6 +138,16 @@ export async function processMessage(
     pendingAction: pendingActionData ?? undefined
   };
 
+  // Phase 3: Check if lead qualification is needed
+  const isFirstInteraction = recentTurns.length <= 2;
+  const conversationSummary = conversation?.context?.summary ?
+    (typeof conversation.context.summary === 'string' ?
+      JSON.parse(conversation.context.summary) :
+      conversation.context.summary) : {};
+
+  const leadQualified = conversationSummary?.lead?.qualified === true;
+  const leadContext = conversationSummary?.lead || null;
+
   // 5.1 Detect user intent BEFORE routing (REGRA OBRIGATÓRIA)
   const userIntent = detectUserIntent(message);
 
@@ -204,15 +163,28 @@ export async function processMessage(
       'finance': 'agent.finance',
       'support': 'agent.support.n1',
       'sales': 'agent.sales',
-      'productivity': 'agent.productivity'
+      'productivity': 'agent.productivity',
+      'promohunter': 'agent.promohunter'
     };
 
     const agentSlug = agentSlugMap[pendingActionData?.agent ?? ''];
 
     if (agentSlug) {
-      const isAgentEnabled = canUseAgent(tenantContext, agentSlug, isTestMode);
-      response = await processWithLLM(message, agentSlug, agentContext, tenantContext, isAgentEnabled, aiPersonality, userIntent);
-      agentUsed = agentSlug;
+      if (agentSlug === 'agent.promohunter') {
+        const promoResult = await processPromoMessage(message, agentContext);
+        response = {
+          message: promoResult.suggestedUserMessage,
+          agentUsed: 'agent.promohunter',
+          pendingAction: promoResult.pendingAction,
+          metadata: { ...promoResult, userIntent }
+        };
+        agentUsed = agentSlug;
+        newPendingAction = promoResult.pendingAction;
+      } else {
+        const isAgentEnabled = canUseAgent(tenantContext, agentSlug, isTestMode);
+        response = await processWithLLM(message, agentSlug, agentContext, tenantContext, isAgentEnabled, aiPersonality, userIntent);
+        agentUsed = agentSlug;
+      }
     } else {
       response = await routeToAgent(message, agentContext, tenantContext, aiPersonality, userIntent);
       agentUsed = response?.agentUsed;
@@ -349,6 +321,8 @@ async function routeToAgent(
     detectedAgent = 'agent.sales';
   } else if (matchesProductivityIntent(message)) {
     detectedAgent = 'agent.productivity';
+  } else if (matchesPromoIntent(message)) {
+    detectedAgent = 'agent.promohunter';
   } else if (matchesSupportIntent(message)) {
     detectedAgent = 'agent.support.n1';
   }
@@ -382,13 +356,15 @@ async function handlePlanQuestion(
   aiPersonality: AIPersonality | null,
   userIntent: IntentCategory
 ): Promise<OrchestratorResponse> {
+  const isTestMode = context.metadata?.isTestMode ?? false;
+
   // Check if we already asked a strategic question in recent messages
   const alreadyAskedStrategicQuestion = context.recentMessages?.some(m =>
     m.role === 'assistant' && /seu maior desafio|usa mais para|recebe muitos contatos/i.test(m.content)
   );
 
   // Build consultive plan prompt
-  const systemPrompt = buildPlanConsultivePrompt(tenantContext, aiPersonality, alreadyAskedStrategicQuestion);
+  const systemPrompt = buildPlanConsultivePrompt(tenantContext, aiPersonality, alreadyAskedStrategicQuestion, isTestMode);
 
   // Build conversation history
   const conversationHistory: LLMMessage[] = context.recentMessages?.map(m => ({
@@ -398,7 +374,12 @@ async function handlePlanQuestion(
 
   conversationHistory.push({ role: 'user', content: message });
 
+  const reservedAmount = 2000;
+
   try {
+    // 1. Reserve tokens for safety
+    const reserved = !isTestMode ? await UsageService.reserveTokens(context.tenantId, reservedAmount) : true;
+
     const llmResponse = await callLLM({
       systemPrompt,
       conversationHistory,
@@ -408,9 +389,29 @@ async function handlePlanQuestion(
       },
       agentConfig: {
         tone: aiPersonality?.voiceTone || 'friendly',
-        maxTokens: 1500
+        maxTokens: 1500,
+        tier: 'advanced'
       }
     });
+
+    // 2. Track usage if successful
+    if (llmResponse.usage) {
+      await UsageService.trackUsage(
+        context.tenantId,
+        context.userId,
+        null,
+        'gpt-4o',
+        {
+          promptTokens: llmResponse.usage.prompt_tokens || 0,
+          completionTokens: llmResponse.usage.completion_tokens || 0,
+          totalTokens: llmResponse.usage.total_tokens
+        },
+        'sales.planning',
+        reservedAmount
+      );
+    } else if (reserved && !isTestMode) {
+      await UsageService.releaseReservation(context.tenantId, reservedAmount);
+    }
 
     return {
       message: llmResponse.content,
@@ -422,7 +423,7 @@ async function handlePlanQuestion(
       }
     };
   } catch (error) {
-    // Fallback with strategic question
+    console.error('Plan question handling failed:', error);
     return {
       message: alreadyAskedStrategicQuestion
         ? `Entendi! Deixa eu te explicar de um jeito que faça sentido pro seu negócio... 😊\n\nPosso te mostrar como cada funcionalidade se encaixa no seu dia a dia. O que mais tá te tomando tempo hoje?`
@@ -437,7 +438,8 @@ async function handlePlanQuestion(
 function buildPlanConsultivePrompt(
   tenantContext: Awaited<ReturnType<typeof getTenantContext>>,
   aiPersonality: AIPersonality | null,
-  alreadyAsked: boolean
+  alreadyAsked: boolean,
+  isTestMode: boolean = false
 ): string {
   const personalityInstructions = aiPersonality?.personalityInstructions || '';
   const situationHandler = aiPersonality?.situationHandlers?.planQuestion || '';
@@ -467,10 +469,13 @@ ${situationHandler ? `INSTRUÇÃO ESPECÍFICA PARA PLANOS:\n${situationHandler}\
   if (!alreadyAsked) {
     basePrompt += `
 PRIMEIRA PERGUNTA ESTRATÉGICA (OBRIGATÓRIO):
-Antes de falar de planos, faça UMA pergunta para entender o contexto:
+Antes de falar de planos, faça UMA pergunta sutil para entender o contexto.
+${isTestMode ? `Como estamos em modo de TESTE, foque na descoberta:
+- "Você já utiliza algum produto da Voke AI no seu dia a dia?"
+- "Tem algum produto ou funcionalidade específica que você veio conhecer hoje?"` : `
 - "Hoje você usa mais pra atendimento, vendas ou os dois?"
 - "Você recebe muitos contatos por dia ou é mais tranquilo?"
-- "Qual seu maior desafio hoje: responder rápido ou fechar mais vendas?"
+- "Qual seu maior desafio hoje: responder rápido ou fechar mais vendas?"`}
 
 Escolha a pergunta mais adequada ao contexto e faça de forma natural.`;
   } else {
@@ -505,9 +510,35 @@ async function processWithLLM(
   aiPersonality: AIPersonality | null = null,
   userIntent: IntentCategory = 'general'
 ): Promise<OrchestratorResponse> {
+  // 0. Get Agent Info (Declare outside try for scope availability in catch)
+  let agentInfo: { name: string; description: string; benefits: string[]; useCases: string[] } | null = null;
+
   try {
+    agentInfo = await getAgentInfo(agentSlug);
+
+    if (!agentInfo) {
+      console.error(`Agent ${agentSlug} not found in DB`);
+      return {
+        message: 'Desculpe, estou com uma dificuldade técnica momentânea. Pode tentar novamente?',
+        metadata: { error: 'agent_not_found_in_db' }
+      };
+    }
+
+    // Load all available agents for product knowledge
+    const allAgents = await prisma.agentNode.findMany({
+      where: { status: 'active' },
+      select: { name: true, description: true, config: true }
+    });
+
     // Build system prompt with personality FIRST (REGRA: Personality > Script > Generic)
-    let systemPrompt = buildUnifiedPrompt(agentSlug, isAgentEnabled, aiPersonality, tenantContext, userIntent);
+    // Pass qualification context for smart lead handling
+    const qualificationContext = {
+      isFirstInteraction: context.recentMessages?.length <= 1,
+      leadQualified: false, // Will be set by context check
+      leadContext: null as any,
+      isTestMode: context.metadata?.isTestMode ?? false
+    };
+    let systemPrompt = buildUnifiedPrompt(agentInfo, isAgentEnabled, aiPersonality, tenantContext, userIntent, allAgents, qualificationContext, agentSlug);
 
     // Build conversation history
     const conversationHistory: LLMMessage[] = context.recentMessages?.map(m => ({
@@ -532,7 +563,13 @@ async function processWithLLM(
     // Determine tone (personality > config > default)
     const tone = aiPersonality?.voiceTone || behaviorOverride.tone as 'formal' | 'neutral' | 'casual' || 'friendly';
 
+    // Determine LLM Tier based on intent and agent
+    const tier = getLLMTier(agentSlug, userIntent);
+
     // Call LLM
+    const reservedAmount = 1500;
+    const reserved = !qualificationContext.isTestMode ? await UsageService.reserveTokens(context.tenantId, reservedAmount) : true;
+
     const llmResponse = await callLLM({
       systemPrompt,
       conversationHistory,
@@ -543,54 +580,86 @@ async function processWithLLM(
       },
       agentConfig: {
         tone,
-        maxTokens: 1500
+        maxTokens: 1500,
+        tier
       }
     });
+
+    // Track usage if successful
+    if (llmResponse.usage) {
+      await UsageService.trackUsage(
+        context.tenantId,
+        context.userId,
+        null,
+        tier === 'advanced' ? 'gpt-4o' : 'gpt-4o-mini',
+        {
+          promptTokens: llmResponse.usage.prompt_tokens || 0,
+          completionTokens: llmResponse.usage.completion_tokens || 0,
+          totalTokens: llmResponse.usage.total_tokens
+        },
+        agentSlug,
+        reservedAmount
+      );
+    } else if (reserved && !qualificationContext.isTestMode) {
+      await UsageService.releaseReservation(context.tenantId, reservedAmount);
+    }
 
     return {
       message: llmResponse.content,
       agentUsed: agentSlug,
       metadata: {
         tokensUsed: llmResponse.usage?.total_tokens,
-        model: 'gpt-4.1-mini',
+        tier,
+        model: tier === 'advanced' ? 'gpt-4o' : 'gpt-4o-mini',
         consultiveMode: !isAgentEnabled,
-        userIntent
+        userIntent,
+        usageState: tenantContext?.aiUsage?.state || 'NORMAL'
       }
     };
   } catch (error) {
     console.error('LLM processing error:', error);
 
+    if (!tenantContext) {
+      return {
+        message: 'Desculpe, tive uma dificuldade técnica em processar sua solicitação. Pode tentar novamente?',
+        metadata: { error: 'tenant_context_null' }
+      };
+    }
+
     // Fallback - still consultive if not enabled
     if (!isAgentEnabled) {
-      return buildConsultiveFallback(agentSlug, tenantContext, aiPersonality);
+      // Ensure we have minimal info for fallback if DB failed
+      const fallbackInfo = agentInfo || {
+        name: 'Assistente',
+        description: 'ajuda geral',
+        benefits: [],
+        useCases: []
+      };
+      return buildConsultiveFallback(agentSlug, tenantContext, aiPersonality, fallbackInfo);
     }
 
     // Humanized fallback with personality
     const greeting = aiPersonality?.customGreeting || 'Olá! Como posso ajudar você hoje?';
 
     return {
-      message: greeting,
+      message: `${greeting} \n\n(DEBUG ERROR: ${error instanceof Error ? error.message : String(error)})`,
       agentUsed: agentSlug,
-      metadata: { fallback: true }
+      metadata: { fallback: true, error: String(error) }
     };
   }
 }
 
 // Build unified prompt with personality (PRIORITY: Personality > Script > Generic)
 function buildUnifiedPrompt(
-  agentSlug: string,
+  agentInfo: { name: string; description: string; benefits: string[]; useCases: string[] },
   isAgentEnabled: boolean,
   aiPersonality: AIPersonality | null,
   tenantContext: Awaited<ReturnType<typeof getTenantContext>>,
-  userIntent: IntentCategory
+  userIntent: IntentCategory,
+  allAgents: Array<{ name: string; description: string | null; config: any }> = [],
+  qualificationContext?: { isFirstInteraction: boolean; leadQualified: boolean; leadContext: any; isTestMode?: boolean },
+  agentSlug?: string
 ): string {
-  const agentInfo = AGENT_CAPABILITIES[agentSlug] || {
-    name: 'Assistente',
-    description: 'assistência geral',
-    benefits: ['Ajuda com suas necessidades'],
-    useCases: ['Resolver problemas do dia a dia']
-  };
-
   const voiceTone = aiPersonality?.voiceTone || 'friendly';
   const communicationStyle = aiPersonality?.communicationStyle || 'consultive';
 
@@ -598,7 +667,7 @@ function buildUnifiedPrompt(
     formal: 'Profissional e respeitoso. Use "você" e mantenha cordialidade.',
     neutral: 'Equilibrado e objetivo. Seja claro e direto, mas acolhedor.',
     casual: 'Descontraído e acessível. Use expressões naturais.',
-    friendly: 'Caloroso e próximo. Como um amigo que entende do assunto.'
+    friendly: 'Caloroso e próximo. Como um amigo que entende do assunto. Use emojis com moderação (😊, 👋).'
   };
 
   const styleGuide = {
@@ -607,40 +676,120 @@ function buildUnifiedPrompt(
     empathetic: 'Valide os sentimentos. Mostre compreensão antes de resolver.'
   };
 
+  // Agent name (customizable)
+  const agentName = aiPersonality?.customName || 'Consultor Voke';
+
   // BASE PROMPT - REGRAS UNIVERSAIS (NUNCA QUEBRE)
-  let prompt = `Você é um assistente virtual especializado. Sua missão é ajudar de forma humana e consultiva.
+  let prompt = `Você é o ${agentName}, representante da Voke AI. Sua missão é ajudar de forma humana e consultiva.
 
 ═══════════════════════════════════════
 REGRAS UNIVERSAIS (PROIBIÇÕES ABSOLUTAS)
 ═══════════════════════════════════════
 ❌ NUNCA diga "Sou o agente de vendas/suporte/etc" - o usuário NÃO vê troca de agentes
+❌ NUNCA se apresente como "assistente" - use seu nome: "${agentName}"
 ❌ NUNCA liste planos/recursos de forma genérica sem contexto
 ❌ NUNCA responda como erro de sistema ou mensagem técnica
 ❌ NUNCA use "não está no seu plano" de forma seca
 ❌ NUNCA pressione para upgrade ou venda
 ❌ NUNCA use linguagem de marketing ou landing page
 ❌ NUNCA diga "nossa equipe" ou "nós da empresa" - você tem VOZ ÚNICA
+❌ NUNCA peça dados (nome, empresa, cargo) na PRIMEIRA mensagem.
+❌ NUNCA apresente menus complexos ou longos logo de início.
+❌ NUNCA diga "sou uma IA" ou peça desculpas por ser um robô.
 
 ✅ SEMPRE mantenha conversa humana e natural
 ✅ SEMPRE entenda a intenção ANTES de responder
 ✅ SEMPRE ofereça valor antes de vender
 ✅ SEMPRE seja útil, mesmo se não puder executar a ação
+✅ SEMPRE espere o usuário dizer o que precisa antes de pedir dados.
 
 ═══════════════════════════════════════
-SEU TOM E ESTILO
-═══════════════════════════════════════
-TOM DE VOZ: ${toneGuide[voiceTone]}
 ESTILO: ${styleGuide[communicationStyle]}
+
+${tenantContext?.aiUsage?.state === 'WARNING' ? `
+⚠️ AVISO DE USO (80% ATINGIDO)
+O uso mensal do cliente está chegando ao limite. De forma muito sutil e humana, você pode mencionar que o uso está alto e que se ele precisar de mais tranquilidade no futuro, pode garantir créditos adicionais. NÃO seja invasivo, apenas informativo e acolhedor.
+` : ''}
+
+${tenantContext?.aiUsage?.state === 'EXHAUSTED' ? `
+🚨 LIMITE ALCANÇADO (MODO CONSULTIVO)
+O limite de uso mensal deste cliente foi atingido. 
+A partir de agora, você DEVE seguir estas regras:
+1. NÃO realize ações que dependam de ferramentas ou execuções complexas (financeiro, agendamentos reais).
+2. Mantenha o papo focado em orientação, explicação e simulação.
+3. De forma gentil, explique que chegamos ao limite do plano atual e que para continuar com automações reais ele pode adquirir créditos adicionais ou aguardar o próximo ciclo.
+4. NUNCA use termos como "tokens", "quota" ou "API". Use "limite mensal" ou "uso do plano".
+` : ''}
 `;
+
+  // Phase 2: Add knowledge of all available agents
+  if (allAgents.length > 0) {
+    prompt += `\n═══════════════════════════════════════
+AGENTES DISPONÍVEIS NA VOKE AI
+═══════════════════════════════════════
+Você tem acesso aos seguintes agentes especializados:
+
+${allAgents.map(agent => `• **${agent.name}**: ${agent.description || 'Assistente especializado'}`).join('\n')}
+
+COMO SUGERIR AGENTES:
+1. Entenda o SEGMENTO do cliente primeiro (e-commerce, saúde, serviços, etc)
+2. Sugira os agentes mais adequados ao contexto dele
+3. Explique o BENEFÍCIO, não só o recurso
+
+Exemplos de sugestões por segmento:
+- **E-commerce**: Vendas (conversão), Atendimento N1 (24/7), PromoHunter (preços)
+- **Clínicas/Saúde**: Secretária (agendamentos), Atendimento N1
+- **Escritórios**: Secretária, Financeiro, Produtividade
+- **Serviços**: Vendas, Atendimento N1, Financeiro
+`;
+  }
+
+  // Phase 3: Opening & Greeting Rules (Updated per user request)
+  if (qualificationContext && qualificationContext.isFirstInteraction && !qualificationContext.leadQualified) {
+    const isTestMode = qualificationContext.isTestMode;
+    const timeGreeting = 'Bom dia / Boa tarde / Boa noite (ajuste ao horário)';
+
+    prompt += `
+═══════════════════════════════════════
+👋 REGRA DE ABERTURA (PRIMEIRA MENSAGEM)
+═══════════════════════════════════════
+O cliente acabou de iniciar a conversa. Esta é a regra MAIS IMPORTANTE da sua existência.
+Sua primeira resposta DEVE seguir EXATAMENTE este formato e conteúdo:
+
+1. Cumprimente conforme o horário (${timeGreeting})
+2. Apresente-se como "${agentName}"
+3. Use EXATAMENTE este texto: "vou te acompanhar para entregar as melhores soluções possíveis para seu negócio. Pra começarmos da melhor forma, é importante entender se hoje você já é cliente Voke, ou se ainda está conhecendo nossas soluções."
+
+⛔ PROIBIDO na abertura:
+- Perguntar sobre uso do sistema, planos ou funcionalidades.
+- Perguntar nome, empresa ou qualquer dado (exceto se já é cliente).
+- Textos longos. Mantenha exatamente o tom solicitado.
+
+💡 EXEMPLO DE RESPOSTA OBRIGATÓRIA:
+"Olá, ${timeGreeting}, sou ${agentName}. Vou te acompanhar para entregar as melhores soluções possíveis para seu negócio. Pra começarmos da melhor forma, é importante entender se hoje você já é cliente Voke, ou se ainda está conhecendo nossas soluções."
+`;
+
+  } else if (qualificationContext?.leadQualified && qualificationContext.leadContext) {
+    prompt += `
+═══════════════════════════════════════
+📊 CONTEXTO DO LEAD(JÁ QUALIFICADO)
+═══════════════════════════════════════
+- ** Nome **: ${qualificationContext.leadContext.name || 'Não informado'}
+- ** Empresa **: ${qualificationContext.leadContext.company || 'Não informada'}
+- ** Segmento **: ${qualificationContext.leadContext.industry || 'Não informado'}
+
+USE ESTE CONTEXTO para sugerir os agentes mais adequados ao segmento dele.
+`;
+  }
 
   // Add personality instructions if configured (PRIORITY 1)
   if (aiPersonality?.personalityInstructions) {
     prompt += `
 ═══════════════════════════════════════
-PERSONALIDADE CONFIGURADA (PRIORIDADE MÁXIMA)
+PERSONALIDADE CONFIGURADA(PRIORIDADE MÁXIMA)
 ═══════════════════════════════════════
 ${aiPersonality.personalityInstructions}
-`;
+    `;
   }
 
   // Add business context if available
@@ -650,27 +799,27 @@ ${aiPersonality.personalityInstructions}
 CONTEXTO DO NEGÓCIO
 ═══════════════════════════════════════
 ${aiPersonality.businessContext}
-`;
+    `;
   }
 
   // Add positive examples
   if (aiPersonality?.positiveExamples?.length) {
     prompt += `
 ═══════════════════════════════════════
-EXEMPLOS DE COMO RESPONDER (INSPIRAÇÃO)
+EXEMPLOS DE COMO RESPONDER(INSPIRAÇÃO)
 ═══════════════════════════════════════
 ${aiPersonality.positiveExamples.map((ex, i) => `${i + 1}. "${ex}"`).join('\n')}
-`;
+    `;
   }
 
   // Add negative examples
   if (aiPersonality?.negativeExamples?.length) {
     prompt += `
 ═══════════════════════════════════════
-O QUE NUNCA FAZER (EVITE)
+O QUE NUNCA FAZER(EVITE)
 ═══════════════════════════════════════
 ${aiPersonality.negativeExamples.map((ex, i) => `${i + 1}. ❌ "${ex}"`).join('\n')}
-`;
+    `;
   }
 
   // Add intent-specific handling
@@ -679,38 +828,38 @@ ${aiPersonality.negativeExamples.map((ex, i) => `${i + 1}. ❌ "${ex}"`).join('\
 INTENÇÃO DETECTADA: ${userIntent.toUpperCase()}
 ═══════════════════════════════════════
 ${getIntentGuidance(userIntent, aiPersonality)}
-`;
+    `;
 
   // Add agent-specific context
   if (!isAgentEnabled) {
     // CONSULTIVE MODE - can talk, can't execute
     prompt += `
 ═══════════════════════════════════════
-MODO CONSULTIVO (${agentInfo.name})
+MODO CONSULTIVO(${agentInfo.name})
 ═══════════════════════════════════════
 O cliente está perguntando sobre ${agentInfo.description}.
 
 VOCÊ PODE:
-- Explicar como funciona
-- Dar orientações práticas
-- Mostrar exemplos e casos de uso
-- Responder dúvidas conceituais
-- Sugerir como resolver manualmente
+    - Explicar como funciona
+      - Dar orientações práticas
+        - Mostrar exemplos e casos de uso
+          - Responder dúvidas conceituais
+            - Sugerir como resolver manualmente
 
-VOCÊ NÃO PODE (neste momento):
-- Executar ações automáticas (agendar, registrar, criar, etc)
+VOCÊ NÃO PODE(neste momento):
+    - Executar ações automáticas(agendar, registrar, criar, etc)
 
 COMO LIDAR:
 Se o cliente pedir uma ação específica, explique como ele pode fazer manualmente
 e mencione naturalmente que com upgrade a automação fica disponível.
 
-Exemplo: "Claro! Deixa eu te explicar como funciona [explica]. 
-Por enquanto você pode fazer assim [passo a passo manual]. 
+      Exemplo: "Claro! Deixa eu te explicar como funciona [explica]. 
+Por enquanto você pode fazer assim[passo a passo manual]. 
 E se quiser automatizar isso no futuro, é só me avisar que mostro as opções 😊"
 
 CASOS DE USO DESTA FUNCIONALIDADE:
 ${agentInfo.useCases.map(uc => `• ${uc}`).join('\n')}
-`;
+    `;
   } else {
     // FULL EXECUTION MODE
     prompt += `
@@ -729,16 +878,60 @@ Mantenha o foco nesta área, mas sempre de forma humana e consultiva.
   // Final reminder
   prompt += `
 ═══════════════════════════════════════
-LEMBRE-SE SEMPRE
+    LEMBRE - SE SEMPRE
 ═══════════════════════════════════════
 • Pareça um profissional experiente conversando, não um chatbot
 • Use frases curtas e naturais
 • Guie com opções claras quando apropriado
 • Crie valor antes de qualquer menção a upgrade
 • O cliente deve confiar em você e querer evoluir naturalmente
+      `;
+
+  // Phase 4: Sales Specific Strategy (Playobook)
+  if (agentSlug === 'agent.sales' || agentInfo.name.toLowerCase().includes('vendas')) {
+    prompt += `
+═══════════════════════════════════════
+💰 ESTRATÉGIA DE VENDAS(PLAYBOOK)
+═══════════════════════════════════════
+Se o cliente disser "Vou pensar", "Vou analisar", "Ver depois" ou "Tá caro":
+    1. ⛔ NÃO encerre a conversa com um simples "tchau" ou "fico à disposição".
+2. ✅ VALIDE a objeção com empatia("Super entendo...").
+3. ✅ PEÇA UM PRÓXIMO PASSO(Contato).
+
+Exemplo para "Vou pensar":
+    "Super entendo, é uma decisão importante mesmo! 😉
+Mas pra eu não te perder de vista e você acabar ficando sem a solução...
+Posso te mandar um resumo dos pontos principais por WhatsApp ou Email ? Assim facilita sua análise."
+
+Exemplo para "Vou ver com meu sócio":
+    "Boa! Se quiser, posso marcar um papo rápido com vocês dois pra tirar dúvidas técnicas. O que acha?"
+
+🎯 SEU OBJETIVO: Não deixar o lead sair sem um compromisso(contato ou agendamento).
 `;
+  }
 
   return prompt;
+}
+
+/**
+ * Determina o tier do modelo (lite vs advanced) com base na complexidade da tarefa
+ */
+function getLLMTier(agentSlug: string, userIntent: IntentCategory): 'lite' | 'advanced' {
+  // Casos que EXIGEM modelo avançado (Raciocínio, Decisão, Comparação)
+  const advancedIntents: IntentCategory[] = ['comparison', 'decision', 'plan', 'complaint'];
+
+  if (advancedIntents.includes(userIntent)) {
+    return 'advanced';
+  }
+
+  // Agentes que exigem mais inteligência por natureza
+  const advancedAgents = ['agent.orchestrator', 'agent.finance'];
+  if (advancedAgents.includes(agentSlug)) {
+    return 'advanced';
+  }
+
+  // Padrão: Modelo leve (Rápido e Barato)
+  return 'lite';
 }
 
 // Get guidance based on user intent
@@ -747,69 +940,69 @@ function getIntentGuidance(intent: IntentCategory, aiPersonality: AIPersonality 
     case 'complaint':
       const complaintHandler = aiPersonality?.situationHandlers?.complaint;
       return complaintHandler || `RECLAMAÇÃO DETECTADA - Prioridade: Acolher
-1. Valide o sentimento ("entendo sua frustração")
-2. Peça desculpas se apropriado
-3. Foque em resolver, não em justificar
-4. Não fique na defensiva`;
+    1. Valide o sentimento("entendo sua frustração")
+    2. Peça desculpas se apropriado
+    3. Foque em resolver, não em justificar
+    4. Não fique na defensiva`;
 
     case 'price':
       const priceHandler = aiPersonality?.situationHandlers?.priceObjection;
       return priceHandler || `OBJEÇÃO DE PREÇO - Prioridade: Mostrar Valor
-1. Não baixe o preço de cara
-2. Mostre o ROI (economia de tempo/dinheiro)
-3. Relacione com os benefícios do negócio dele
+    1. Não baixe o preço de cara
+    2. Mostre o ROI(economia de tempo / dinheiro)
+    3. Relacione com os benefícios do negócio dele
 4. Mantenha a postura de consultor especializado`;
 
     case 'plan':
       const planHandler = aiPersonality?.situationHandlers?.planQuestion;
       return planHandler || `DÚVIDA DE PLANO - Prioridade: Simplificar e Consultar
-1. Não liste recursos técnicos secos
-2. Pergunte qual o objetivo dele ANTES de recomendar
-3. Mostre o que ele ganha em cada nível de forma prática
-4. Sugira o passo natural de evolução`;
+    1. Não liste recursos técnicos secos
+    2. Pergunte qual o objetivo dele ANTES de recomendar
+    3. Mostre o que ele ganha em cada nível de forma prática
+    4. Sugira o passo natural de evolução`;
 
     case 'comparison':
       return `COMPARAÇÃO DETECTADA - Prioridade: Contextualizar
-1. Entenda O QUE ele quer comparar
-2. Relacione com o CASO DE USO dele
-3. Não liste features - fale de resultados
-4. Ajude a tomar decisão informada`;
+    1. Entenda O QUE ele quer comparar
+    2. Relacione com o CASO DE USO dele
+    3. Não liste features - fale de resultados
+    4. Ajude a tomar decisão informada`;
 
     case 'decision':
       return `DECISÃO DETECTADA - Prioridade: Facilitar
-1. O cliente parece pronto para agir
-2. Seja direto e facilite o próximo passo
-3. Confirme o entendimento antes de executar
-4. Não crie barreiras desnecessárias`;
+    1. O cliente parece pronto para agir
+    2. Seja direto e facilite o próximo passo
+    3. Confirme o entendimento antes de executar
+    4. Não crie barreiras desnecessárias`;
 
     case 'execution':
       return `EXECUÇÃO DETECTADA - Prioridade: Agir ou Orientar
-1. O cliente quer FAZER algo
-2. Se puder: execute ou inicie o processo
-3. Se não puder: explique como fazer manualmente
-4. Seja prático e objetivo`;
+    1. O cliente quer FAZER algo
+    2. Se puder: execute ou inicie o processo
+    3. Se não puder: explique como fazer manualmente
+    4. Seja prático e objetivo`;
 
     case 'question':
       const techHandler = aiPersonality?.situationHandlers?.technicalIssue;
-      return (techHandler ? `DÚVIDA TÉCNICA: ${techHandler}\n` : '') + `PERGUNTA DETECTADA - Prioridade: Esclarecer
-1. Responda a pergunta de forma clara
-2. Use exemplos práticos
-3. Ofereça informação adicional se útil
-4. Pergunte se ficou claro`;
+      return (techHandler ? `DÚVIDA TÉCNICA: ${techHandler} \n` : '') + `PERGUNTA DETECTADA - Prioridade: Esclarecer
+    1. Responda a pergunta de forma clara
+    2. Use exemplos práticos
+    3. Ofereça informação adicional se útil
+    4. Pergunte se ficou claro`;
 
     case 'curiosity':
       return `CURIOSIDADE DETECTADA - Prioridade: Educar
-1. Aproveite para explicar bem
-2. Mostre casos de uso práticos
-3. Gere interesse genuíno
-4. Convide para explorar mais`;
+    1. Aproveite para explicar bem
+    2. Mostre casos de uso práticos
+    3. Gere interesse genuíno
+    4. Convide para explorar mais`;
 
     default:
       return `CONVERSA GERAL - Prioridade: Engajar
-1. Seja natural e acolhedor
-2. Tente entender o que o cliente precisa
-3. Faça uma pergunta se necessário
-4. Mantenha a conversa fluindo`;
+    1. Seja natural e acolhedor
+    2. Tente entender o que o cliente precisa
+    3. Faça uma pergunta se necessário
+    4. Mantenha a conversa fluindo`;
   }
 }
 
@@ -817,15 +1010,9 @@ function getIntentGuidance(intent: IntentCategory, aiPersonality: AIPersonality 
 function buildConsultiveFallback(
   agentSlug: string,
   tenantContext: Awaited<ReturnType<typeof getTenantContext>>,
-  aiPersonality: AIPersonality | null
+  aiPersonality: AIPersonality | null,
+  agentInfo: { name: string; description: string; benefits: string[]; useCases: string[] }
 ): OrchestratorResponse {
-  const agentInfo = AGENT_CAPABILITIES[agentSlug] || {
-    name: 'este recurso',
-    description: 'funcionalidade avançada',
-    benefits: [],
-    useCases: []
-  };
-
   // Use custom greeting if available
   if (aiPersonality?.customGreeting) {
     return {
@@ -848,7 +1035,7 @@ function buildConsultiveFallback(
 
 Você perguntou sobre ${agentInfo.description}. Posso te explicar como funciona e te orientar sobre as melhores práticas.
 
-${agentInfo.useCases.length > 0 ? `Isso é muito útil quando ${agentInfo.useCases[0]?.toLowerCase()}.` : ''}
+      ${agentInfo.useCases.length > 0 ? `Isso é muito útil quando os clientes perguntam: "${agentInfo.useCases[0]}".` : ''}
 
 Me conta mais sobre o que você precisa e vamos resolver juntos!`,
     agentUsed: agentSlug,

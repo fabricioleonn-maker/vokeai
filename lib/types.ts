@@ -130,6 +130,7 @@ export interface AgentContext {
   memorySummary?: string;
   recentMessages: { role: string; content: string }[];
   pendingAction?: PendingAction;
+  metadata?: Record<string, any>;
 }
 
 export interface PendingAction {
@@ -158,6 +159,7 @@ export interface AuditEntry {
   entityId?: string;
   before?: Record<string, unknown>;
   after?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
 }
 
 // ==================== CATEGORIES ====================
@@ -185,6 +187,7 @@ export interface AIPersonality {
   positiveExamples: string[];
   negativeExamples: string[];
   businessContext: string;
+  customName?: string; // Nome do agente (ex: "Pedro", "Ana")
   customGreeting?: string;
   situationHandlers?: {
     planQuestion?: string;

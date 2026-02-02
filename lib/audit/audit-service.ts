@@ -13,7 +13,8 @@ export async function logAudit(entry: AuditEntry): Promise<void> {
         entityType: entry?.entityType ?? 'unknown',
         entityId: entry?.entityId ?? null,
         before: entry?.before ? (entry.before as Prisma.InputJsonValue) : Prisma.JsonNull,
-        after: entry?.after ? (entry.after as Prisma.InputJsonValue) : Prisma.JsonNull
+        after: entry?.after ? (entry.after as Prisma.InputJsonValue) : Prisma.JsonNull,
+        metadata: entry?.metadata ? (entry.metadata as Prisma.InputJsonValue) : Prisma.JsonNull
       }
     });
   } catch (error) {

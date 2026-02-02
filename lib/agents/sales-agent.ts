@@ -6,9 +6,11 @@ import type { AgentContext, AgentResult, PendingAction } from '@/lib/types';
 
 const SALES_INTENTS = [
   'preço', 'preco', 'valor', 'quanto', 'custa', 'plano', 'planos',
-  'desconto', 'promoção', 'promocao', 'oferta', 'proposta',
+  'proposta',
   'assinar', 'contratar', 'comprar', 'adquirir', 'upgrade',
-  'renovar', 'mensal', 'anual', 'trial', 'teste'
+  'renovar', 'mensal', 'anual', 'trial', 'teste',
+  // Objeções que devem ser tratadas por vendas
+  'pensar', 'analisar', 'ver depois', 'decidir', 'caro', 'desconto'
 ];
 
 // Planos disponíveis (mock - em produção viria do Voke AI)

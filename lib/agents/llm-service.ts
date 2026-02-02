@@ -10,8 +10,8 @@ export interface LLMMessage {
 export interface LLMResponse {
   content: string;
   usage?: {
-    prompt_tokens: number;
-    completion_tokens: number;
+    prompt_tokens?: number;
+    completion_tokens?: number;
     total_tokens: number;
   };
 }
@@ -28,6 +28,9 @@ export interface AgentPromptConfig {
     tone?: 'formal' | 'neutral' | 'casual' | 'friendly';
     language?: string;
     maxTokens?: number;
+    model?: string;
+    tier?: 'lite' | 'advanced';
+    temperature?: number;
   };
 }
 
@@ -35,13 +38,28 @@ export interface AgentPromptConfig {
  * Call LLM API with configured prompts
  */
 export async function callLLM(config: AgentPromptConfig): Promise<LLMResponse> {
-  const API_KEY = process.env.ABACUSAI_API_KEY;
+  const OLLAMA_URL = process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434';
+  const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+  const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-  if (!API_KEY) {
-    throw new Error('ABACUSAI_API_KEY not configured');
+  // Configuração de Provider (Auto-detect logic)
+  let PROVIDER = process.env.LLM_PROVIDER;
+
+  if (!PROVIDER) {
+    if (GEMINI_API_KEY) {
+      PROVIDER = 'gemini';
+    } else if (OPENAI_API_KEY) {
+      PROVIDER = 'openai';
+    } else {
+      PROVIDER = 'ollama'; // Default fallback only if no keys present
+    }
   }
 
-  // Build system prompt with tenant context
+  // Debug provider selection (server-side log)
+  console.log(`🤖 LLM Service using Provider: ${PROVIDER}`);
+
+
+  // Build full system prompt
   let fullSystemPrompt = config.systemPrompt;
 
   if (config.tenantContext) {
@@ -53,6 +71,7 @@ export async function callLLM(config: AgentPromptConfig): Promise<LLMResponse> {
     }
   }
 
+  // Tone handling
   if (config.agentConfig?.tone) {
     const toneMap = {
       formal: 'Use linguagem formal e profissional.',
@@ -69,32 +88,112 @@ export async function callLLM(config: AgentPromptConfig): Promise<LLMResponse> {
   ];
 
   try {
-    const response = await fetch('https://apps.abacus.ai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${API_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'gpt-4.1-mini',
-        messages,
-        max_tokens: config.agentConfig?.maxTokens || 1500,
-        temperature: 0.7,
-      })
-    });
+    // 🟢 PROVIDER: OLLAMA (LOCAL)
+    if (PROVIDER === 'ollama') {
+      console.log('🦙 Usando Ollama Local:', OLLAMA_URL);
+      const response = await fetch(`${OLLAMA_URL}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'llama3', // Ou 'mistral', 'gemma'
+          messages: messages,
+          stream: false,
+          options: {
+            temperature: 0.7,
+            num_ctx: 4096
+          }
+        })
+      });
 
-    if (!response.ok) {
-      const error = await response.text();
-      console.error('LLM API error:', error);
-      throw new Error(`LLM API error: ${response.status}`);
+      if (!response.ok) throw new Error(`Ollama Error: ${response.status}`);
+      const data = await response.json();
+      return {
+        content: data.message?.content || '',
+        usage: {
+          prompt_tokens: data.prompt_eval_count || 0,
+          completion_tokens: data.eval_count || 0,
+          total_tokens: (data.prompt_eval_count || 0) + (data.eval_count || 0)
+        }
+      };
     }
 
-    const data = await response.json();
+    // 🔵 PROVIDER: GEMINI (GOOGLE)
+    if (PROVIDER === 'gemini') {
+      if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY não configurada');
 
-    return {
-      content: data.choices?.[0]?.message?.content || '',
-      usage: data.usage
-    };
+      // Gemini API structure is different, using simple fetch adapter here for OpenAI-compat endpoint
+      // Or standard Gemini REST API
+      const GEMINI_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
+
+      const geminiContents = messages.map(m => ({
+        role: m.role === 'user' ? 'user' : 'model',
+        parts: [{ text: m.content }]
+      }));
+
+      // Adjust system prompt for Gemini (it prefers system instructions separately or merged)
+      // Simple merge for now:
+      if (messages[0].role === 'system') {
+        geminiContents[0] = { role: 'user', parts: [{ text: `SYSTEM INSTRUCTION: ${messages[0].content}` }] };
+      }
+
+      const response = await fetch(GEMINI_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: geminiContents,
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: config.agentConfig?.maxTokens || 1500
+          }
+        })
+      });
+
+      if (!response.ok) {
+        const err = await response.text();
+        throw new Error(`Gemini Error: ${err}`);
+      }
+
+      const data = await response.json();
+      return {
+        content: data.candidates?.[0]?.content?.parts?.[0]?.text || '',
+        usage: { total_tokens: 0 } // Gemini doesn't always return usage in this endpoint format simply
+      };
+    }
+
+    // 🔴 DEFAULT: OPENAI (STANDARD)
+    if (PROVIDER === 'openai' || (!PROVIDER && OPENAI_API_KEY)) {
+      if (!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not configured');
+
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${OPENAI_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: config.agentConfig?.model ||
+            (config.agentConfig?.tier === 'advanced' ? 'gpt-4o' : 'gpt-4o-mini'),
+          messages,
+          max_tokens: config.agentConfig?.maxTokens || 1500,
+          temperature: config.agentConfig?.temperature ?? 0.7,
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        console.error('OpenAI API error:', error);
+        throw new Error(`OpenAI API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return {
+        content: data.choices?.[0]?.message?.content || '',
+        usage: data.usage
+      };
+    }
+
+    throw new Error(`Provider ${PROVIDER} not supported or configured correctly.`);
+
   } catch (error) {
     console.error('LLM call failed:', error);
     throw error;
@@ -117,7 +216,7 @@ export async function getConversationHistory(
   });
 
   // Reverse to get chronological order
-  return turns.reverse().map(turn => ({
+  return turns.reverse().map((turn: any) => ({
     role: turn.role as 'user' | 'assistant',
     content: turn.content
   }));

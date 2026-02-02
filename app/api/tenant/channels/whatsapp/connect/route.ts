@@ -59,16 +59,20 @@ export async function POST(request: NextRequest) {
             },
             update: {
                 enabled: true,
-                credentialsRef: encryptedCredentials,
-                syncSettings,
+                config: {
+                    credentialsRef: encryptedCredentials,
+                    syncSettings
+                },
                 allowedAgents: ['agent.support.n1', 'agent.sales']
             },
             create: {
                 tenantId: user.tenantId,
                 integrationSlug,
                 enabled: true,
-                credentialsRef: encryptedCredentials,
-                syncSettings,
+                config: {
+                    credentialsRef: encryptedCredentials,
+                    syncSettings
+                },
                 allowedAgents: ['agent.support.n1', 'agent.sales']
             }
         });

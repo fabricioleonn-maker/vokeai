@@ -384,7 +384,7 @@ export default function ChatPage() {
                 {[
                   { text: '📅 Agendar reunião', action: 'Preciso organizar minha agenda de hoje' },
                   { text: '💰 Consultar financeiro', action: 'Como está meu fluxo de caixa?' },
-                  { text: '🎯 Ver planos', action: 'Quero conhecer os planos do Sistema Matriz' },
+                  { text: '🎯 Ver planos', action: 'Quero conhecer os planos da Voke AI' },
                   { text: '📝 Ajuda com texto', action: 'Pode me ajudar a escrever um email importante?' }
                 ].map((item) => (
                   <button

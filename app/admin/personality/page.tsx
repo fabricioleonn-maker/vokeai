@@ -1,499 +1,431 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import {
-  Brain,
-  Save,
-  Sparkles,
-  MessageSquare,
-  ThumbsUp,
-  ThumbsDown,
-  Building2,
-  Palette,
-  Loader2,
-  Plus,
-  X,
-  CheckCircle,
-  AlertCircle
-} from 'lucide-react';
+import { Brain, MessageSquare, Briefcase, Settings2, Save, Sparkles, Wand2 } from 'lucide-react';
+import { toast } from 'sonner';
 
-import type { AIPersonality } from '@/lib/types';
-
-interface Tenant {
-  id: string;
-  slug: string;
-  name: string;
+interface PersonalityConfig {
+  voiceTone: 'formal' | 'neutral' | 'casual' | 'friendly';
+  communicationStyle: 'direct' | 'consultive' | 'empathetic';
+  customGreeting: string;
+  personalityInstructions: string;
+  positiveExamples: string[];
+  negativeExamples: string[];
+  businessContext: string;
 }
 
-const defaultPersonality: AIPersonality = {
-  voiceTone: 'friendly',
-  communicationStyle: 'consultive',
-  personalityInstructions: '',
-  positiveExamples: [],
-  negativeExamples: [],
-  businessContext: '',
-  customGreeting: '',
-  situationHandlers: {}
-};
-
 export default function PersonalityPage() {
-  const [tenants, setTenants] = useState<Tenant[]>([]);
-  const [selectedTenant, setSelectedTenant] = useState<string>('');
-  const [personality, setPersonality] = useState<AIPersonality>(defaultPersonality);
-  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'persona' | 'examples' | 'business'>('persona');
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState('');
-  const [newPositiveExample, setNewPositiveExample] = useState('');
-  const [newNegativeExample, setNewNegativeExample] = useState('');
-  const [activeTab, setActiveTab] = useState('personality');
+  const [config, setConfig] = useState<PersonalityConfig>({
+    voiceTone: 'friendly',
+    communicationStyle: 'consultive',
+    customGreeting: '',
+    personalityInstructions: '',
+    positiveExamples: ['', '', ''],
+    negativeExamples: ['', '', ''],
+    businessContext: ''
+  });
 
   useEffect(() => {
-    fetchTenants();
+    fetchConfig();
   }, []);
 
-  useEffect(() => {
-    if (selectedTenant) {
-      fetchPersonality(selectedTenant);
-    }
-  }, [selectedTenant]);
-
-  async function fetchTenants() {
+  const fetchConfig = async () => {
     try {
-      const res = await fetch('/api/admin/tenants');
-      const data = await res.json();
-      const tenantList = Array.isArray(data) ? data : (data?.tenants || []);
-      setTenants(tenantList);
-      if (tenantList.length > 0) {
-        setSelectedTenant(tenantList[0].id);
+      const res = await fetch('/api/admin/personality');
+      if (res.ok) {
+        const data = await res.json();
+        setConfig(prev => ({ ...prev, ...data }));
       }
-    } catch (err) {
-      console.error('Error fetching tenants:', err);
-      setTenants([]);
-    } finally {
-      setLoading(false);
+    } catch (error) {
+      console.error('Error fetching personality:', error);
     }
-  }
+  };
 
-  async function fetchPersonality(tenantId: string) {
+  const handleSave = async () => {
+    setSaving(true);
     try {
-      setLoading(true);
-      const res = await fetch(`/api/admin/personality?tenantId=${tenantId}`);
-      const data = await res.json();
-      if (data.personality) {
-        setPersonality({ ...defaultPersonality, ...data.personality });
-      }
-    } catch (err) {
-      console.error('Error fetching personality:', err);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function savePersonality() {
-    try {
-      setSaving(true);
-      setError('');
-      setSaved(false);
-
       const res = await fetch('/api/admin/personality', {
-        method: 'PUT',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tenantId: selectedTenant,
-          personality
-        })
+        body: JSON.stringify(config)
       });
 
-      if (!res.ok) {
-        throw new Error('Erro ao salvar');
+      if (res.ok) {
+        toast.success('Personalidade salva com sucesso!');
+      } else {
+        toast.error('Erro ao salvar personalidade.');
       }
-
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-    } catch (err) {
-      setError('Erro ao salvar personalidade. Tente novamente.');
+    } catch (error) {
+      toast.error('Erro de conexão.');
     } finally {
       setSaving(false);
     }
-  }
-
-  function addPositiveExample() {
-    if (newPositiveExample.trim()) {
-      setPersonality((prev: AIPersonality) => ({
-        ...prev,
-        positiveExamples: [...prev.positiveExamples, newPositiveExample.trim()]
-      }));
-      setNewPositiveExample('');
-    }
-  }
-
-  function addNegativeExample() {
-    if (newNegativeExample.trim()) {
-      setPersonality((prev: AIPersonality) => ({
-        ...prev,
-        negativeExamples: [...prev.negativeExamples, newNegativeExample.trim()]
-      }));
-      setNewNegativeExample('');
-    }
-  }
-
-  function removeExample(type: 'positive' | 'negative', index: number) {
-    if (type === 'positive') {
-      setPersonality((prev: AIPersonality) => ({
-        ...prev,
-        positiveExamples: prev.positiveExamples.filter((_: string, i: number) => i !== index)
-      }));
-    } else {
-      setPersonality((prev: AIPersonality) => ({
-        ...prev,
-        negativeExamples: prev.negativeExamples.filter((_: string, i: number) => i !== index)
-      }));
-    }
-  }
-
-  const tabs = [
-    { id: 'personality', label: 'Persona', icon: Brain },
-    { id: 'examples', label: 'Exemplos', icon: MessageSquare },
-    { id: 'context', label: 'Negócio', icon: Building2 },
-    { id: 'situations', label: 'Cenários', icon: Palette }
-  ];
-
-  if (loading && tenants.length === 0) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 animate-spin text-cyan-500" />
-      </div>
-    );
-  }
+  };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-8 pb-12">
-      {/* Premium Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden rounded-3xl bg-slate-900 p-8 text-white shadow-2xl border border-white/10"
-      >
-        <div className="absolute top-0 right-0 w-64 h-64 bg-cyan-500/20 blur-[100px] rounded-full -mr-32 -mt-32" />
-        <div className="absolute bottom-0 left-0 w-64 h-64 bg-blue-600/20 blur-[100px] rounded-full -ml-32 -mb-32" />
-
-        <div className="relative flex flex-col md:flex-row items-center gap-6">
-          <div className="p-4 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-2xl shadow-lg border border-white/20">
-            <Brain className="w-10 h-10" />
+    <div className="relative pb-20">
+      {/* Header Banner */}
+      <div className="bg-slate-900 rounded-2xl p-8 mb-8 text-white relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-purple-500/20 rounded-full blur-3xl -mr-16 -mt-16" />
+        <div className="relative z-10 flex items-start gap-6">
+          <div className="w-16 h-16 bg-blue-500 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-blue-500/30">
+            <Brain className="w-8 h-8 text-white" />
           </div>
-          <div className="text-center md:text-left">
-            <h1 className="text-3xl font-black tracking-tight">Treinamento de Personalidade</h1>
-            <p className="text-slate-400 mt-2 max-w-xl text-lg leading-relaxed">
+          <div>
+            <h1 className="text-3xl font-bold mb-2">Treinamento de Personalidade</h1>
+            <p className="text-slate-300 max-w-xl text-lg">
               Molde a voz e o comportamento da sua IA. Transforme scripts frios em conversas humanas e persuasivas.
             </p>
           </div>
         </div>
-      </motion.div>
+      </div>
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <div className="grid lg:grid-cols-3 gap-8">
+        {/* Main Editor */}
+        <div className="lg:col-span-2 space-y-6">
 
-        {/* Left Column: Settings */}
-        <div className="lg:col-span-8 space-y-6">
-
-          {/* Tenant & Navigation */}
-          <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-slate-200 shadow-xl overflow-hidden">
-            <div className="p-6 border-b border-slate-100 bg-slate-50/50">
-              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Selecione o Cliente</label>
-              <select
-                value={selectedTenant}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedTenant(e.target.value)}
-                className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500/20 bg-white font-bold text-slate-700 transition-all cursor-pointer"
-              >
-                {(tenants ?? []).map((tenant: Tenant) => (
-                  <option key={tenant.id} value={tenant.id}>
-                    {tenant.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex p-2 gap-1 bg-slate-50/50">
-              {tabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex-1 flex flex-col items-center justify-center gap-1.5 py-4 rounded-xl transition-all ${activeTab === tab.id
-                    ? 'bg-white text-cyan-600 shadow-md border border-slate-100'
-                    : 'text-slate-400 hover:text-slate-600 hover:bg-white/50'
-                    }`}
-                >
-                  <tab.icon className={`w-5 h-5 ${activeTab === tab.id ? 'text-cyan-500' : ''}`} />
-                  <span className="text-[10px] font-black uppercase tracking-widest">{tab.label}</span>
-                </button>
-              ))}
-            </div>
+          {/* Tabs */}
+          <div className="bg-white rounded-xl p-2 shadow-sm border border-slate-200 flex gap-1">
+            <button
+              onClick={() => setActiveTab('persona')}
+              className={`flex-1 py-3 px-4 rounded-lg flex items-center justify-center gap-2 font-medium transition-all ${activeTab === 'persona'
+                ? 'bg-blue-50 text-blue-600 shadow-sm'
+                : 'text-slate-500 hover:bg-slate-50'
+                }`}
+            >
+              <Settings2 className="w-4 h-4" />
+              Persona
+            </button>
+            <button
+              onClick={() => setActiveTab('examples')}
+              className={`flex-1 py-3 px-4 rounded-lg flex items-center justify-center gap-2 font-medium transition-all ${activeTab === 'examples'
+                ? 'bg-blue-50 text-blue-600 shadow-sm'
+                : 'text-slate-500 hover:bg-slate-50'
+                }`}
+            >
+              <MessageSquare className="w-4 h-4" />
+              Exemplos
+            </button>
+            <button
+              onClick={() => setActiveTab('business')}
+              className={`flex-1 py-3 px-4 rounded-lg flex items-center justify-center gap-2 font-medium transition-all ${activeTab === 'business'
+                ? 'bg-blue-50 text-blue-600 shadow-sm'
+                : 'text-slate-500 hover:bg-slate-50'
+                }`}
+            >
+              <Briefcase className="w-4 h-4" />
+              Negócio
+            </button>
           </div>
 
-          <div className="bg-white/80 backdrop-blur-xl rounded-3xl border border-slate-200 shadow-xl p-8 min-h-[500px]">
-            {activeTab === 'personality' && (
-              <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className="space-y-3">
-                    <label className="text-sm font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-cyan-500" /> Tom de Voz
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {(['formal', 'neutral', 'casual', 'friendly'] as const).map((tone) => (
-                        <button
-                          key={tone}
-                          onClick={() => setPersonality((p: AIPersonality) => ({ ...p, voiceTone: tone }))}
-                          className={`px-4 py-3 rounded-xl text-xs font-bold transition-all border ${personality.voiceTone === tone
-                            ? 'bg-cyan-50 border-cyan-200 text-cyan-700'
-                            : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'
-                            }`}
-                        >
-                          {tone.charAt(0).toUpperCase() + tone.slice(1)}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="space-y-3">
-                    <label className="text-sm font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
-                      <MessageSquare className="w-4 h-4 text-blue-500" /> Estilo
-                    </label>
-                    <div className="grid grid-cols-1 gap-2">
-                      {(['direct', 'consultive', 'empathetic'] as const).map((style) => (
-                        <button
-                          key={style}
-                          onClick={() => setPersonality((p: AIPersonality) => ({ ...p, communicationStyle: style }))}
-                          className={`px-4 py-3 rounded-xl text-xs font-bold transition-all border flex items-center justify-between ${personality.communicationStyle === style
-                            ? 'bg-blue-50 border-blue-200 text-blue-700'
-                            : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'
-                            }`}
-                        >
-                          {style.charAt(0).toUpperCase() + style.slice(1)}
-                          {personality.communicationStyle === style && <CheckCircle className="w-4 h-4" />}
-                        </button>
-                      ))}
-                    </div>
+          {/* Content */}
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8 min-h-[500px]">
+
+            {activeTab === 'persona' && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
+
+                {/* Tone of Voice */}
+                <div>
+                  <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900 uppercase tracking-wider mb-4">
+                    <Sparkles className="w-4 h-4 text-purple-500" /> Tom de Voz
+                  </h3>
+                  <div className="grid grid-cols-4 gap-4">
+                    {['formal', 'neutral', 'casual', 'friendly'].map((tone) => (
+                      <button
+                        key={tone}
+                        onClick={() => setConfig({ ...config, voiceTone: tone as any })}
+                        className={`py-3 px-2 rounded-lg border text-sm font-medium capitalize transition-all ${config.voiceTone === tone
+                          ? 'border-blue-500 bg-blue-50 text-blue-700 ring-2 ring-blue-500/20'
+                          : 'border-slate-200 text-slate-600 hover:border-blue-300'
+                          }`}
+                      >
+                        {tone}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <label className="text-sm font-black text-slate-700 uppercase tracking-widest">Saudação Personalizada</label>
+                {/* Style */}
+                <div>
+                  <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900 uppercase tracking-wider mb-4">
+                    <Wand2 className="w-4 h-4 text-purple-500" /> Estilo de Comunicação
+                  </h3>
+                  <div className="space-y-3">
+                    {[
+                      { id: 'direct', label: 'Direto (Respostas curtas e objetivas)' },
+                      { id: 'consultive', label: 'Consultivo (Faz perguntas, entende, depois orienta)' },
+                      { id: 'empathetic', label: 'Empático (Foca em acolhimento e compreensão)' }
+                    ].map((style) => (
+                      <label
+                        key={style.id}
+                        className={`flex items-center justify-between p-4 rounded-xl border cursor-pointer transition-all ${config.communicationStyle === style.id
+                          ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500/20'
+                          : 'border-slate-200 hover:bg-slate-50'
+                          }`}
+                      >
+                        <span className={`text-sm font-medium ${config.communicationStyle === style.id ? 'text-blue-900' : 'text-slate-700'}`}>
+                          {style.label}
+                        </span>
+                        <input
+                          type="radio"
+                          name="communicationStyle"
+                          className="w-4 h-4 text-blue-600"
+                          checked={config.communicationStyle === style.id}
+                          onChange={() => setConfig({ ...config, communicationStyle: style.id as any })}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Greeting */}
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-2">Saudação Personalizada</h3>
                   <input
-                    type="text"
-                    value={personality.customGreeting || ''}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPersonality((p: AIPersonality) => ({ ...p, customGreeting: e.target.value }))}
+                    value={config.customGreeting}
+                    onChange={(e) => setConfig({ ...config, customGreeting: e.target.value })}
+                    className="w-full p-4 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-slate-700 placeholder:text-slate-400"
                     placeholder="Ex: Olá! Sou sua assistente digital. Como posso ajudar hoje?"
-                    className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-cyan-500/10 font-medium text-slate-700 transition-all"
                   />
                 </div>
 
-                <div className="space-y-3">
-                  <label className="text-sm font-black text-slate-700 uppercase tracking-widest">Instruções de Personalidade</label>
+                {/* Instructions */}
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-2">Instruções de Personalidade (Prompt)</h3>
                   <textarea
-                    value={personality.personalityInstructions}
-                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setPersonality((p: AIPersonality) => ({ ...p, personalityInstructions: e.target.value }))}
-                    rows={8}
-                    className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-3xl focus:outline-none focus:ring-4 focus:ring-cyan-500/10 font-medium text-slate-700 transition-all resize-none leading-relaxed"
-                    placeholder="Descreva traits específicos... Ex: Seja empático, nunca use termos técnicos, etc."
+                    rows={6}
+                    value={config.personalityInstructions}
+                    onChange={(e) => setConfig({ ...config, personalityInstructions: e.target.value })}
+                    className="w-full p-4 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-slate-700 font-mono text-sm leading-relaxed"
+                    placeholder="Descreva detalhadamente como a IA deve se comportar. Ex: 'Você é um especialista sênior em finanças, sempre usa metáforas de futebol para explicar conceitos complexos...'"
                   />
                 </div>
+
               </motion.div>
             )}
 
             {activeTab === 'examples' && (
-              <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-8">
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <label className="text-sm font-black text-emerald-700 uppercase tracking-widest">Respostas Ideais (Do's)</label>
-                    <span className="text-[10px] font-bold text-slate-400 px-3 py-1 bg-slate-100 rounded-full">{personality.positiveExamples.length} EXEMPLOS</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={newPositiveExample}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPositiveExample(e.target.value)}
-                      onKeyPress={(e: React.KeyboardEvent<HTMLInputElement>) => e.key === 'Enter' && addPositiveExample()}
-                      className="flex-1 px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-emerald-500/10 transition-all"
-                      placeholder="Adicione um exemplo positivo..."
-                    />
-                    <button onClick={addPositiveExample} className="px-6 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl transition-all shadow-lg shadow-emerald-500/20">
-                      <Plus className="w-6 h-6" />
-                    </button>
-                  </div>
-                  <div className="space-y-2 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
-                    {(personality?.positiveExamples ?? []).map((ex: string, i: number) => (
-                      <div key={i} className="group flex items-center gap-3 p-4 bg-emerald-50/50 border border-emerald-100 rounded-2xl">
-                        <CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0" />
-                        <span className="flex-1 text-sm font-medium text-emerald-900">{ex}</span>
-                        <button onClick={() => removeExample('positive', i)} className="text-emerald-200 hover:text-red-500 transition-colors">
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+                <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 mb-6">
+                  <h3 className="font-semibold text-blue-900 mb-1">Por que dar exemplos?</h3>
+                  <p className="text-sm text-blue-700">A melhor forma de ensinar a IA é mostrando. Dê exemplos de perguntas e as respostas ideais que você espera.</p>
                 </div>
 
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <label className="text-sm font-black text-red-700 uppercase tracking-widest">Evitar (Don'ts)</label>
-                    <span className="text-[10px] font-bold text-slate-400 px-3 py-1 bg-slate-100 rounded-full">{personality.negativeExamples.length} EXEMPLOS</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={newNegativeExample}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewNegativeExample(e.target.value)}
-                      onKeyPress={(e: React.KeyboardEvent<HTMLInputElement>) => e.key === 'Enter' && addNegativeExample()}
-                      className="flex-1 px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-red-500/10 transition-all"
-                      placeholder="Adicione um exemplo negativo..."
+                  <h3 className="text-sm font-bold text-slate-900 uppercase">Exemplos Positivos (O que fazer)</h3>
+                  {config.positiveExamples.map((ex, i) => (
+                    <textarea
+                      key={`pos-${i}`}
+                      rows={2}
+                      value={ex}
+                      onChange={(e) => {
+                        const newEx = [...config.positiveExamples];
+                        newEx[i] = e.target.value;
+                        setConfig({ ...config, positiveExamples: newEx });
+                      }}
+                      className="w-full p-3 border border-green-200 bg-green-50/30 rounded-lg focus:ring-2 focus:ring-green-500 outline-none text-sm placeholder:text-slate-400"
+                      placeholder={`Exemplo de boa resposta #${i + 1}`}
                     />
-                    <button onClick={addNegativeExample} className="px-6 bg-red-500 hover:bg-red-600 text-white rounded-2xl transition-all shadow-lg shadow-red-500/20">
-                      <Plus className="w-6 h-6" />
-                    </button>
-                  </div>
-                  <div className="space-y-2 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
-                    {(personality?.negativeExamples ?? []).map((ex: string, i: number) => (
-                      <div key={i} className="group flex items-center gap-3 p-4 bg-red-50/50 border border-red-100 rounded-2xl">
-                        <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
-                        <span className="flex-1 text-sm font-medium text-red-900">{ex}</span>
-                        <button onClick={() => removeExample('negative', i)} className="text-red-200 hover:text-red-500 transition-colors">
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                  ))}
+                </div>
+
+                <div className="space-y-4 pt-4 border-t">
+                  <h3 className="text-sm font-bold text-slate-900 uppercase">O que evitar (Exemplos Negativos)</h3>
+                  {config.negativeExamples.map((ex, i) => (
+                    <textarea
+                      key={`neg-${i}`}
+                      rows={2}
+                      value={ex}
+                      onChange={(e) => {
+                        const newEx = [...config.negativeExamples];
+                        newEx[i] = e.target.value;
+                        setConfig({ ...config, negativeExamples: newEx });
+                      }}
+                      className="w-full p-3 border border-red-200 bg-red-50/30 rounded-lg focus:ring-2 focus:ring-red-500 outline-none text-sm placeholder:text-slate-400"
+                      placeholder={`Exemplo do que NÃO dizer #${i + 1}`}
+                    />
+                  ))}
                 </div>
               </motion.div>
             )}
 
-            {activeTab === 'context' && (
-              <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="h-full">
-                <div className="flex flex-col h-full space-y-4">
-                  <label className="text-sm font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
-                    <Building2 className="w-5 h-5 text-blue-500" /> Contexto do Negócio
-                  </label>
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                    Descreva o DNA da empresa, produtos e como ela quer ser percebida.
-                  </p>
+            {activeTab === 'business' && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-2">Contexto do Negócio</h3>
+                  <p className="text-sm text-slate-500 mb-4">Insira informações sobre sua empresa que a IA deve saber (História, Valores, Produtos Principais, diferenciais).</p>
                   <textarea
-                    value={personality.businessContext}
-                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setPersonality((p: AIPersonality) => ({ ...p, businessContext: e.target.value }))}
-                    className="flex-1 w-full px-8 py-6 bg-slate-50 border border-slate-200 rounded-3xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 font-medium text-slate-700 transition-all resize-none leading-relaxed"
-                    placeholder="Ex: Somos uma consultoria focada em alta performance..."
+                    rows={12}
+                    value={config.businessContext}
+                    onChange={(e) => setConfig({ ...config, businessContext: e.target.value })}
+                    className="w-full p-4 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-slate-700 font-mono text-sm leading-relaxed"
+                    placeholder="A Voke AI foi fundada em 2024 com a missão de..."
                   />
                 </div>
               </motion.div>
             )}
 
-            {activeTab === 'situations' && (
-              <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
-                <label className="text-sm font-black text-slate-700 uppercase tracking-widest flex items-center gap-2 mb-2">
-                  <Palette className="w-5 h-5 text-purple-500" /> Manipuladores de Situação
-                </label>
-
-                {([
-                  { key: 'planQuestion', label: 'Perguntas Sobre Planos' },
-                  { key: 'technicalIssue', label: 'Problemas Técnicos' },
-                  { key: 'complaint', label: 'Reclamações de Clientes' },
-                  { key: 'priceObjection', label: 'Objeção de Preço' }
-                ] as const).map((sit) => (
-                  <div key={sit.key} className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-2">{sit.label}</label>
-                    <textarea
-                      value={(personality.situationHandlers as any)?.[sit.key] || ''}
-                      onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setPersonality((p: AIPersonality) => ({
-                        ...p,
-                        situationHandlers: { ...p.situationHandlers, [sit.key]: e.target.value }
-                      }))}
-                      className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-slate-500/5 font-medium text-slate-700 transition-all resize-none h-24"
-                      placeholder={`Como reagir em ${sit.label.toLowerCase()}...`}
-                    />
-                  </div>
-                ))}
-              </motion.div>
-            )}
           </div>
         </div>
 
-        {/* Right Column: Preview & Save */}
-        <div className="lg:col-span-4 space-y-6">
-          <div className="bg-slate-900 rounded-3xl p-8 border border-white/10 shadow-2xl sticky top-8">
-            <h3 className="text-white font-black uppercase tracking-widest text-xs mb-6 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-cyan-400" /> Resumo da Persona
+        {/* Sidebar */}
+        <div className="lg:col-span-1">
+          <div className="bg-slate-900 rounded-2xl p-6 text-white shadow-xl sticky top-6">
+            <h3 className="flex items-center gap-2 font-bold mb-6 text-cyan-400">
+              <Sparkles className="w-5 h-5" /> RESUMO DA PERSONA
             </h3>
 
-            <div className="space-y-6">
-              <div className="space-y-4">
-                <div className="flex justify-between items-end border-b border-white/5 pb-3">
-                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Tom de Voz</span>
-                  <span className="text-xs font-black text-cyan-400 uppercase tracking-widest">{personality.voiceTone}</span>
-                </div>
-                <div className="flex justify-between items-end border-b border-white/5 pb-3">
-                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Estilo</span>
-                  <span className="text-xs font-black text-blue-400 uppercase tracking-widest">{personality.communicationStyle}</span>
-                </div>
+            <div className="space-y-6 mb-8">
+              <div className="flex justify-between items-center border-b border-slate-700 pb-4">
+                <span className="text-slate-400 text-sm font-medium">TOM DE VOZ</span>
+                <span className="font-bold text-cyan-300 uppercase">{config.voiceTone}</span>
               </div>
 
+              <div className="flex justify-between items-center border-b border-slate-700 pb-4">
+                <span className="text-slate-400 text-sm font-medium">ESTILO</span>
+                <span className="font-bold text-cyan-300 uppercase">{config.communicationStyle}</span>
+              </div>
+
+              <div className="flex justify-between items-center border-b border-slate-700 pb-4">
+                <span className="text-slate-400 text-sm font-medium">EXEMPLOS</span>
+                <span className="font-bold text-white uppercase">{config.positiveExamples.filter(e => e).length} Cadastrados</span>
+              </div>
             </div>
 
-            {/* Situational Handlers display */}
-            {personality?.situationHandlers && Object.keys(personality.situationHandlers).length > 0 && (
-              <div className="pt-4 space-y-2">
-                <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Respostas para Situações</h4>
-                {personality.situationHandlers.planQuestion && (
-                  <div className="p-2 bg-white/5 rounded-lg border border-white/5 text-[10px] text-white/70">
-                    <strong>Plano:</strong> {personality.situationHandlers.planQuestion.substring(0, 50)}...
-                  </div>
-                )}
-                {personality.situationHandlers.priceObjection && (
-                  <div className="p-2 bg-white/5 rounded-lg border border-white/5 text-[10px] text-white/70">
-                    <strong>Preço:</strong> {personality.situationHandlers.priceObjection.substring(0, 50)}...
-                  </div>
-                )}
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="w-full py-4 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 rounded-xl font-bold text-white shadow-lg shadow-cyan-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {saving ? (
+                'Salvando...'
+              ) : (
+                <>
+                  <Save className="w-5 h-5" /> SALVAR PERSONA
+                </>
+              )}
+            </button>
+            <p className="text-center text-xs text-slate-500 mt-4">
+              As alterações levam alguns segundos para refletir no chat.
+            </p>
+            <div className="mt-6 bg-cyan-900/50 border border-cyan-800 rounded-xl p-4 flex flex-col gap-3">
+              <div className="flex items-center gap-3">
+                <div className="bg-cyan-500/20 rounded-full p-2 h-fit">
+                  <MessageSquare className="w-4 h-4 text-cyan-300" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-cyan-100 text-sm">Simulador</h4>
+                  <p className="text-xs text-cyan-400">Teste a personalidade agora.</p>
+                </div>
               </div>
-            )}
 
-            <div className="pt-6">
               <button
-                onClick={savePersonality}
-                disabled={saving}
-                className="w-full relative group"
+                onClick={() => document.dispatchEvent(new CustomEvent('open-personality-test', { detail: config }))}
+                className="w-full py-2 bg-cyan-500 hover:bg-cyan-400 text-white font-semibold rounded-lg text-sm transition shadow-sm flex items-center justify-center gap-2"
               >
-                <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-2xl blur opacity-30 group-hover:opacity-100 transition duration-1000 group-hover:duration-200"></div>
-                <div className="relative flex items-center justify-center gap-3 px-8 py-5 bg-gradient-to-br from-cyan-500 to-blue-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs transition-all active:scale-95 disabled:opacity-50">
-                  {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-                  {saving ? 'PROCESSANDO...' : 'SALVAR PERSONA'}
-                </div>
+                Abrir Chat de Teste
               </button>
-
-              {saved && (
-                <motion.p
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="text-center mt-4 text-emerald-400 text-[10px] font-black uppercase tracking-[0.2em]"
-                >
-                  ✨ Salvo com sucesso!
-                </motion.p>
-              )}
-
-              {error && (
-                <p className="text-center mt-4 text-red-400 text-[10px] font-black uppercase tracking-[0.2em]">
-                  ❌ {error}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-8 pt-8 border-t border-white/5">
-            <div className="flex items-start gap-3 p-4 bg-cyan-500/10 rounded-2xl border border-cyan-500/20">
-              <AlertCircle className="w-4 h-4 text-cyan-400 flex-shrink-0 mt-0.5" />
-              <p className="text-[10px] text-cyan-200 font-medium leading-relaxed">
-                DICA: Use o Modo de Teste na Landing Page para validar como estas configurações afetam a conversa em tempo real.
-              </p>
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Test Chat Injected Here */}
+      <PersonalityTestChat config={config} />
+    </div>
+  );
+}
+
+function PersonalityTestChat({ config }: { config: PersonalityConfig }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [messages, setMessages] = useState<{ role: 'user' | 'assistant', content: string }[]>([]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      setIsOpen(true);
+      setMessages([{ role: 'assistant', content: config.customGreeting || 'Olá! Como posso ajudar?' }]);
+    };
+    document.addEventListener('open-personality-test', handler);
+    return () => document.removeEventListener('open-personality-test', handler);
+  }, [config.customGreeting]);
+
+  const sendMessage = async () => {
+    if (!input.trim() || loading) return;
+
+    const userMsg = input;
+    setInput('');
+    setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
+    setLoading(true);
+
+    try {
+      const res = await fetch('/api/admin/personality/test-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: userMsg, config })
+      });
+      const data = await res.json();
+      setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
+    } catch (e) {
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Erro ao conectar com a IA.' }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed bottom-6 right-6 w-96 h-[500px] bg-white rounded-2xl shadow-2xl border border-slate-200 z-50 flex flex-col overflow-hidden animate-in slide-in-from-bottom-10 fade-in">
+      <div className="bg-slate-900 p-4 text-white flex justify-between items-center">
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+          <span className="font-bold text-sm">Modo de Teste</span>
+        </div>
+        <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-white"><Wand2 className="w-4 h-4" /></button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
+        {messages.map((m, i) => (
+          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[85%] p-3 rounded-2xl text-sm ${m.role === 'user'
+              ? 'bg-blue-600 text-white rounded-br-none'
+              : 'bg-white border border-slate-200 text-slate-700 rounded-bl-none shadow-sm'
+              }`}>
+              {m.content}
+            </div>
+          </div>
+        ))}
+        {loading && (
+          <div className="flex justify-start">
+            <div className="bg-white border border-slate-200 p-3 rounded-2xl rounded-bl-none shadow-sm flex gap-1">
+              <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" />
+              <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce [animation-delay:0.2s]" />
+              <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce [animation-delay:0.4s]" />
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="p-3 bg-white border-t flex gap-2">
+        <input
+          className="flex-1 bg-slate-100 border-0 rounded-lg px-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+          placeholder="Digite para testar..."
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && sendMessage()}
+        />
+        <button
+          onClick={sendMessage}
+          disabled={loading}
+          className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+        >
+          <MessageSquare className="w-4 h-4" />
+        </button>
       </div>
     </div>
   );

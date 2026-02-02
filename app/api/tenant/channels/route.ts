@@ -21,14 +21,14 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: 'Tenant not found' }, { status: 404 });
         }
 
-        // Get all integration configs for this tenant (WhatsApp, Instagram, etc.)
+        // Get all integration configs for this tenant
         const configs = await prisma.tenantIntegrationConfig.findMany({
             where: { tenantId: user.tenantId },
             select: {
                 id: true,
                 integrationSlug: true,
                 enabled: true,
-                syncSettings: true,
+                config: true,
                 createdAt: true
             }
         });
@@ -37,14 +37,14 @@ export async function GET(request: NextRequest) {
         const channels = configs
             .filter(c => c.integrationSlug.includes('whatsapp') || c.integrationSlug.includes('instagram'))
             .map(c => {
-                const syncSettings = c.syncSettings as Record<string, any>;
+                const settings = (c.config as any)?.syncSettings || {};
                 const type = c.integrationSlug.includes('whatsapp') ? 'whatsapp' : 'instagram';
 
                 return {
                     type,
-                    provider: syncSettings?.provider || null,
+                    provider: settings?.provider || null,
                     status: c.enabled ? 'connected' : 'disconnected',
-                    phoneNumberId: syncSettings?.phone_number_id,
+                    phoneNumberId: settings?.phone_number_id,
                     connectedAt: c.createdAt.toISOString()
                 };
             });

@@ -8,9 +8,10 @@ import Image from 'next/image';
 
 export default function PlanosPage() {
     const [showHeader, setShowHeader] = useState(true);
-    const [lastScrollY, setLastScrollY] = useState(0);
 
     useEffect(() => {
+        let lastScrollY = window.scrollY;
+
         const handleScroll = () => {
             const currentScrollY = window.scrollY;
             if (currentScrollY > lastScrollY && currentScrollY > 100) {
@@ -18,12 +19,12 @@ export default function PlanosPage() {
             } else {
                 setShowHeader(true);
             }
-            setLastScrollY(currentScrollY);
+            lastScrollY = currentScrollY;
         };
 
         window.addEventListener('scroll', handleScroll, { passive: true });
         return () => window.removeEventListener('scroll', handleScroll);
-    }, [lastScrollY]);
+    }, []);
 
     const plans = [
         {
@@ -136,7 +137,7 @@ export default function PlanosPage() {
                             Investimento por <span className="text-cyan-600">Valor Entregue</span>
                         </h1>
                         <p className="text-lg text-slate-600 max-w-2xl mx-auto">
-                            No Sistema Matriz, não cobramos por "features". Cobramos pela transformação do seu negócio
+                            Na <strong>Voke AI</strong>, não cobramos por "features". Cobramos pela transformação do seu negócio
                             através de IA com personalidade real.
                         </p>
                     </div>
@@ -219,7 +220,7 @@ export default function PlanosPage() {
                                     ))}
                                 </div>
                                 <p className="text-sm font-medium text-slate-700">
-                                    +250 empresas já evoluíram com o Sistema Matriz
+                                    +250 empresas já evoluíram com a Voke AI
                                 </p>
                             </div>
                         </div>
@@ -246,7 +247,7 @@ export default function PlanosPage() {
                     <div className="flex items-center gap-8 text-sm font-bold text-slate-600">
                         <Link href="#" className="hover:text-cyan-600 transition-colors">Termos</Link>
                         <Link href="#" className="hover:text-cyan-600 transition-colors">Privacidade</Link>
-                        <Link href="mailto:contato@sistemamatriz.com" className="hover:text-cyan-600 transition-colors">Suporte</Link>
+                        <Link href="mailto:contato@vokeai.com.br" className="hover:text-cyan-600 transition-colors">Suporte</Link>
                     </div>
                 </div>
             </footer>

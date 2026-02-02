@@ -115,6 +115,10 @@ export async function extractKnowledge(
     }
 }
 
+import { callLLM } from '../llm-service';
+
+// ...
+
 /**
  * Use LLM to extract structured insights from conversation
  */
@@ -141,15 +145,11 @@ async function extractWithLLM(
         ? `Glossário de termos: ${JSON.stringify(tenant.glossary)}`
         : '';
 
-    const prompt = `
+    const systemPrompt = `
 Você é um extrator de conhecimento especializado. Analise esta conversa e extraia insights valiosos.
 
 ${sectorContext}
 ${glossaryContext}
-
-Conversa:
-- Usuário: "${userMsg}"
-- Assistente: "${assistantMsg}"
 
 Extraia e retorne um JSON estruturado com:
 
@@ -181,33 +181,24 @@ REGRAS:
 4. Confidence alto (>0.8) apenas para fatos explícitos
 5. Use o glossário para identificar termos específicos do setor
 
-Retorne APENAS o JSON, sem texto adicional.
-  `.trim();
+Retorne APENAS o JSON.
+`.trim();
 
     try {
-        // Call AbacusAI LLM
-        const response = await fetch('https://api.abacus.ai/v0/chat', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${process.env.ABACUSAI_API_KEY}`
-            },
-            body: JSON.stringify({
-                model: 'gemini-1.5-flash',
-                messages: [
-                    { role: 'user', content: prompt }
-                ],
-                temperature: 0.3,
-                max_tokens: 1000
-            })
+        const conversationHistory = [
+            { role: 'user', content: `Usuário: "${userMsg}"\nAssistente: "${assistantMsg}"` }
+        ] as any[];
+
+        const response = await callLLM({
+            systemPrompt,
+            conversationHistory,
+            agentConfig: {
+                maxTokens: 1000,
+                temperature: 0.3
+            }
         });
 
-        if (!response.ok) {
-            throw new Error(`AbacusAI error: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        const content = data.choices?.[0]?.message?.content || '{}';
+        const content = response.content || '{}';
 
         // Parse JSON response
         const jsonMatch = content.match(/\{[\s\S]*\}/);
