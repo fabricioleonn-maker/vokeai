@@ -131,6 +131,7 @@ export interface AgentContext {
   recentMessages: { role: string; content: string }[];
   pendingAction?: PendingAction;
   metadata?: Record<string, any>;
+  lastIntent?: string;
 }
 
 export interface PendingAction {
@@ -145,7 +146,16 @@ export interface OrchestratorResponse {
   agentUsed?: string;
   requiresConfirmation?: boolean;
   pendingAction?: PendingAction;
-  metadata?: Record<string, unknown>;
+  metadata: {
+    intent: string;
+    agent: string;
+    model: string;
+    confidence: number;
+    reason: string;
+    allowed_actions: 'execute' | 'explain_only' | 'blocked';
+    requires_tools: boolean;
+    [key: string]: any;
+  };
 }
 
 // ==================== AUDIT ====================
@@ -184,11 +194,13 @@ export interface AIPersonality {
   voiceTone: 'formal' | 'neutral' | 'casual' | 'friendly';
   communicationStyle: 'direct' | 'consultive' | 'empathetic';
   personalityInstructions: string;
+  dont_rules: string; // Mandatory "What NOT to do"
   positiveExamples: string[];
   negativeExamples: string[];
   businessContext: string;
-  customName?: string; // Nome do agente (ex: "Pedro", "Ana")
+  customName?: string;
   customGreeting?: string;
+  personality_version?: number;
   situationHandlers?: {
     planQuestion?: string;
     technicalIssue?: string;

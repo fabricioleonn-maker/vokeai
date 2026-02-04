@@ -10,9 +10,11 @@ interface PersonalityConfig {
   communicationStyle: 'direct' | 'consultive' | 'empathetic';
   customGreeting: string;
   personalityInstructions: string;
+  dont_rules: string;
   positiveExamples: string[];
   negativeExamples: string[];
   businessContext: string;
+  personality_version?: number;
 }
 
 export default function PersonalityPage() {
@@ -23,9 +25,11 @@ export default function PersonalityPage() {
     communicationStyle: 'consultive',
     customGreeting: '',
     personalityInstructions: '',
+    dont_rules: '',
     positiveExamples: ['', '', ''],
     negativeExamples: ['', '', ''],
-    businessContext: ''
+    businessContext: '',
+    personality_version: 1
   });
 
   useEffect(() => {
@@ -47,10 +51,15 @@ export default function PersonalityPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
+      const payload = {
+        ...config,
+        personality_version: (config.personality_version || 1) + 1
+      };
+
       const res = await fetch('/api/admin/personality', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config)
+        body: JSON.stringify(payload)
       });
 
       if (res.ok) {
@@ -194,13 +203,33 @@ export default function PersonalityPage() {
 
                 {/* Instructions */}
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-2">Instruções de Personalidade (Prompt)</h3>
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Instruções de Personalidade (Prompt)</h3>
+                    <span className={`text-xs font-mono ${(config.personalityInstructions.length > 1500) ? 'text-red-500 font-bold' : 'text-slate-400'}`}>
+                      {config.personalityInstructions.length}/1500
+                    </span>
+                  </div>
                   <textarea
                     rows={6}
                     value={config.personalityInstructions}
                     onChange={(e) => setConfig({ ...config, personalityInstructions: e.target.value })}
-                    className="w-full p-4 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-slate-700 font-mono text-sm leading-relaxed"
-                    placeholder="Descreva detalhadamente como a IA deve se comportar. Ex: 'Você é um especialista sênior em finanças, sempre usa metáforas de futebol para explicar conceitos complexos...'"
+                    className={`w-full p-4 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-slate-700 font-mono text-sm leading-relaxed ${config.personalityInstructions.length > 1500 ? 'border-red-300 bg-red-50' : 'border-slate-200'}`}
+                    placeholder="Descreva detalhadamente como a IA deve se comportar. Ex: 'Você é um especialista sênior em finanças...'"
+                  />
+                  {config.personalityInstructions.length > 1500 && (
+                    <p className="text-red-500 text-[10px] mt-1">⚠️ O limite sugerido de 1500 caracteres foi excedido. Isso pode afetar a performance.</p>
+                  )}
+                </div>
+
+                {/* Don'ts Rules */}
+                <div>
+                  <h3 className="text-sm font-bold text-red-600 uppercase tracking-wider mb-2">Regras de Exclusão (O QUE NÃO FAZER)</h3>
+                  <textarea
+                    rows={4}
+                    value={config.dont_rules}
+                    onChange={(e) => setConfig({ ...config, dont_rules: e.target.value })}
+                    className="w-full p-4 border border-red-200 bg-red-50/20 rounded-xl focus:ring-2 focus:ring-red-500 outline-none text-slate-700 font-mono text-sm leading-relaxed"
+                    placeholder="Ex: NUNCA sugira outras empresas além da Voke. NUNCA use gírias excessivas. NUNCA fale de política."
                   />
                 </div>
 
@@ -292,6 +321,11 @@ export default function PersonalityPage() {
               <div className="flex justify-between items-center border-b border-slate-700 pb-4">
                 <span className="text-slate-400 text-sm font-medium">EXEMPLOS</span>
                 <span className="font-bold text-white uppercase">{config.positiveExamples.filter(e => e).length} Cadastrados</span>
+              </div>
+
+              <div className="flex justify-between items-center border-b border-slate-700 pb-4">
+                <span className="text-slate-400 text-sm font-medium">VERSÃO</span>
+                <span className="font-bold text-orange-400">v{config.personality_version || 1}</span>
               </div>
             </div>
 
