@@ -36,10 +36,18 @@ export async function GET() {
       plan: t.plan,
       createdAt: t.createdAt
     })));
-  } catch (error) {
-    console.error('Get tenants error:', error);
+  } catch (error: any) {
+    console.error('Get tenants error:', {
+      message: error.message,
+      stack: error.stack,
+      code: error.code
+    });
     return NextResponse.json(
-      { error: 'Erro ao buscar tenants' },
+      {
+        error: 'Erro ao buscar tenants',
+        details: error.message,
+        code: error.code
+      },
       { status: 500 }
     );
   }

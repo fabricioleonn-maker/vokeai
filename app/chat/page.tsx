@@ -271,13 +271,13 @@ export default function ChatPage() {
             </button>
 
             <div className="flex-1 overflow-y-auto">
-              {conversations.length === 0 && (
+              {(conversations || []).length === 0 && (
                 <div className="p-10 text-center text-slate-400">
                   <MessageCircle className="w-10 h-10 mx-auto mb-4 opacity-20" />
                   <p className="text-sm font-medium">Nenhuma conversa encontrada</p>
                 </div>
               )}
-              {conversations.map((conv: Conversation) => (
+              {(conversations || []).map((conv: Conversation) => (
                 <div
                   key={conv.id}
                   onClick={() => setConversationId(conv.id)}
@@ -338,15 +338,15 @@ export default function ChatPage() {
           <div className="flex items-center gap-3">
             {!isTestMode && (
               <select
-                value={tenantId}
+                value={tenantId || ''}
                 onChange={(e) => {
                   setTenantId(e.target.value);
                   startNewConversation();
                 }}
                 className="text-xs font-bold border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 transition-all appearance-none pr-8 relative bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 fill=%22none%22 viewBox=%220 0 20 20%22%3E%3Cpath stroke=%22%236b7280%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22 stroke-width=%221.5%22 d=%22m6 8 4 4 4-4%22%2F%3E%3C%2Fsvg%3E')] bg-[length:1.25rem_1.25rem] bg-[right_0.5rem_center] bg-no-repeat"
               >
-                {tenants.length === 0 && <option value="">Carregando...</option>}
-                {tenants.map((t) => (
+                {(!tenants || tenants.length === 0) && <option value="">Nenhum acesso disponível</option>}
+                {(tenants || []).map((t) => (
                   <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
               </select>
@@ -421,11 +421,12 @@ export default function ChatPage() {
             </div>
           )}
 
-          {messages.map((message: Message, index: number) => {
+          {(messages || []).map((message: Message, index: number) => {
+            if (!message) return null;
             const isUser = message.role === 'user';
             return (
               <motion.div
-                key={message.id}
+                key={message.id || index}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.05 }}
@@ -440,7 +441,7 @@ export default function ChatPage() {
                   >
                     <p className="whitespace-pre-wrap break-words text-sm leading-relaxed font-medium">{message.content}</p>
                     <div className={`flex items-center justify-end gap-1.5 mt-2 ${isUser ? 'text-slate-400' : 'text-slate-300'}`}>
-                      <span className="text-[10px] font-bold uppercase tracking-widest">{formatTime(message.timestamp)}</span>
+                      <span className="text-[10px] font-bold uppercase tracking-widest">{message.timestamp ? formatTime(message.timestamp) : ''}</span>
                       {isUser && (
                         message.status === 'sending' ? <Clock className="w-3 h-3" /> :
                           message.status === 'delivered' ? <CheckCheck className="w-3 h-3" /> :
