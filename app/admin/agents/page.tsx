@@ -66,7 +66,10 @@ export default function AgentsPage() {
         body: JSON.stringify(newAgent)
       });
 
-      if (!res.ok) throw new Error('Falha ao criar agente');
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Falha ao criar agente');
+      }
 
       await fetchAgents();
       setShowCreateModal(false);

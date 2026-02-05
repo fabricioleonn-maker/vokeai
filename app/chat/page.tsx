@@ -60,8 +60,19 @@ export default function ChatPage() {
     setMounted(true);
     // Load available tenants
     fetch('/api/admin/tenants')
-      .then(res => res.json())
+      .then(async res => {
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(errorData.error || `Erro ${res.status}`);
+        }
+        return res.json();
+      })
       .then((data: TenantOption[]) => {
+        if (!Array.isArray(data)) {
+          console.error('Invalid tenants data:', data);
+          setTenants([]);
+          return;
+        }
         setTenants(data);
 
         if (isTestMode) {
@@ -76,7 +87,10 @@ export default function ChatPage() {
           }
         }
       })
-      .catch(console.error);
+      .catch(err => {
+        console.error('Failed to load tenants:', err);
+        setTenants([]);
+      });
   }, [isTestMode]);
 
   useEffect(() => {
@@ -107,6 +121,7 @@ export default function ChatPage() {
       }
     } catch (error) {
       console.error('Failed to load conversation:', error);
+      setMessages([]);
     }
   };
 
@@ -145,7 +160,11 @@ export default function ChatPage() {
         m.id === userMessage.id ? { ...m, status: 'delivered' as const } : m
       ));
 
-      if (!conversationId && data.conversationId) {
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+
+      if (!conversationId && data?.conversationId) {
         setConversationId(data.conversationId);
       }
 

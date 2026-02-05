@@ -67,23 +67,37 @@ export async function GET() {
       orderBy: { name: 'asc' }
     });
 
-    return NextResponse.json(agents?.map((a: any) => ({
-      id: a?.id,
-      slug: a?.slug,
-      name: a?.name,
-      description: a?.description,
-      category: a?.category,
-      status: a?.status,
-      channelsSupported: (a?.config as any)?.channelsSupported,
-      intentsSupported: (a?.config as any)?.intentsSupported,
-      planConstraints: (a?.config as any)?.planConstraints,
-      behavior: (a?.config as any)?.behavior,
-      activeTenantsCount: a?._count?.tenantConfigs ?? 0
-    })) ?? []);
-  } catch (error) {
-    console.error('Get agents error:', error);
+    console.log(`[GET-AGENTS] Found ${agents.length} agents in DB`);
+
+    return NextResponse.json(agents?.map((a: any) => {
+      // Robust parsing of config just in case it was stringified by mistake
+      let config = a?.config;
+      if (typeof config === 'string') {
+        try { config = JSON.parse(config); } catch (e) { }
+      }
+
+      return {
+        id: a?.id,
+        slug: a?.slug,
+        name: a?.name,
+        description: a?.description,
+        category: a?.category,
+        status: a?.status,
+        channelsSupported: (config as any)?.channelsSupported || [],
+        intentsSupported: (config as any)?.intentsSupported || [],
+        planConstraints: (config as any)?.planConstraints || {},
+        behavior: (config as any)?.behavior || {},
+        activeTenantsCount: a?._count?.tenantConfigs ?? 0
+      };
+    }) ?? []);
+  } catch (error: any) {
+    console.error('Get agents error:', {
+      message: error.message,
+      stack: error.stack,
+      code: error.code
+    });
     return NextResponse.json(
-      { error: 'Erro ao buscar agentes' },
+      { error: 'Erro ao buscar agentes', details: error.message },
       { status: 500 }
     );
   }

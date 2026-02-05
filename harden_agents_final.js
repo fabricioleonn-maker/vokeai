@@ -56,7 +56,7 @@ REGRAS DE COMPORTAMENTO (OBRIGATÓRIAS):
         await client.agentNode.update({
             where: { slug: agent.slug },
             data: {
-                config: JSON.stringify(agent.config)
+                config: agent.config
             }
         });
     }
