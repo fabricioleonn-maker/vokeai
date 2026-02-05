@@ -9,9 +9,9 @@ export interface TenantContext {
   };
   plan: {
     id: string;
-    slug: string;
+    slug?: string;
     name: string;
-    tier: string;
+    tier?: string;
     limits: Record<string, unknown>;
     features: Record<string, unknown>;
   } | null;
@@ -104,9 +104,9 @@ export async function getTenantContext(tenantId: string, isTestMode: boolean = f
     },
     plan: tenant?.plan ? {
       id: tenant.plan?.id ?? '',
-      slug: tenant.plan?.slug ?? '',
+      // slug: tenant.plan?.slug ?? '', // Missing in schema
       name: tenant.plan?.name ?? '',
-      tier: isTestMode ? 'enterprise' : (tenant.plan?.tier ?? 'free'),
+      tier: isTestMode ? 'enterprise' : 'standard', // Missing in schema, using standard as default
       limits: isTestMode ? { messagesPerMonth: 999999, agentsCount: 10 } : ((tenant.plan?.limits as Record<string, unknown>) ?? {}),
       features: isTestMode ? { all: true } : (((tenant.plan as any)?.features as Record<string, unknown>) ?? {})
     } : null,

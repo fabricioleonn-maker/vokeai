@@ -16,15 +16,11 @@ export async function GET(
         agentConfigs: {
           include: { agent: true }
         },
-        integrationConfigs: {
-          include: { integration: true }
-        },
+        integrationConfigs: true,
         _count: {
           select: {
             users: true,
-            conversations: true,
-            calendarEvents: true,
-            financialTxns: true
+            conversations: true
           }
         }
       }
@@ -121,8 +117,6 @@ export async function DELETE(
       where: { conversation: { tenantId: params?.id } }
     });
     await prisma.conversation.deleteMany({ where: { tenantId: params?.id } });
-    await prisma.calendarEvent.deleteMany({ where: { tenantId: params?.id } });
-    await prisma.financialTransaction.deleteMany({ where: { tenantId: params?.id } });
     await prisma.auditLog.deleteMany({ where: { tenantId: params?.id } });
     await prisma.user.deleteMany({ where: { tenantId: params?.id } });
 

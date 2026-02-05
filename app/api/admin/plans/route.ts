@@ -11,19 +11,16 @@ export async function GET() {
           select: { tenants: true }
         }
       },
-      orderBy: { tier: 'asc' }
+      orderBy: { name: 'asc' }
     });
 
     return NextResponse.json(plans?.map(p => ({
       id: p?.id,
-      slug: p?.slug,
+      // slug: p?.slug, // Missing in schema
       name: p?.name,
       description: p?.description,
-      tier: p?.tier,
+      // tier: p?.tier, // Missing in schema
       limits: p?.limits,
-      features: p?.features,
-      billing: p?.billing,
-      status: p?.status,
       tenantsCount: p?._count?.tenants ?? 0
     })) ?? []);
   } catch (error) {

@@ -11,7 +11,7 @@ interface TenantDetail {
   slug: string;
   name: string;
   status: string;
-  plan: { id: string; name: string; tier: string; limits: Record<string, unknown>; features: Record<string, unknown> } | null;
+  plan: { id: string; name: string; tier?: string; limits: Record<string, unknown>; features?: Record<string, unknown> } | null;
   agentConfigs: { agentSlug: string; enabled: boolean; agent: { name: string } }[];
   integrationConfigs: { integrationSlug: string; enabled: boolean; integration: { name: string } }[];
   stats: { users: number; conversations: number; calendarEvents: number; financialTxns: number };
@@ -178,9 +178,8 @@ export default function TenantDetailPage() {
                     <p className="font-medium text-slate-900">{config?.agent?.name}</p>
                     <p className="text-sm text-slate-500">{config?.agentSlug}</p>
                   </div>
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${
-                    config?.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
-                  }`}>
+                  <span className={`px-2 py-1 rounded text-xs font-medium ${config?.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                    }`}>
                     {config?.enabled ? 'Ativo' : 'Inativo'}
                   </span>
                 </div>
@@ -210,9 +209,8 @@ export default function TenantDetailPage() {
                     <p className="font-medium text-slate-900">{config?.integration?.name}</p>
                     <p className="text-sm text-slate-500">{config?.integrationSlug}</p>
                   </div>
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${
-                    config?.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
-                  }`}>
+                  <span className={`px-2 py-1 rounded text-xs font-medium ${config?.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                    }`}>
                     {config?.enabled ? 'Ativo' : 'Inativo'}
                   </span>
                 </div>

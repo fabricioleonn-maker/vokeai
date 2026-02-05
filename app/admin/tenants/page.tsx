@@ -10,7 +10,7 @@ interface Tenant {
   slug: string;
   name: string;
   status: string;
-  plan: { id: string; name: string; tier: string } | null;
+  plan: { id: string; name: string; tier?: string } | null;
   usersCount: number;
   conversationsCount: number;
   createdAt: string;
@@ -19,7 +19,7 @@ interface Tenant {
 interface Plan {
   id: string;
   name: string;
-  tier: string;
+  tier?: string;
 }
 
 export default function TenantsPage() {
@@ -249,7 +249,7 @@ export default function TenantsPage() {
             >
               <option value="">Selecione um plano</option>
               {(plans ?? []).map(plan => (
-                <option key={plan.id} value={plan.id}>{plan.name} ({plan.tier})</option>
+                <option key={plan.id} value={plan.id}>{plan.name} {plan.tier ? `(${plan.tier})` : ''}</option>
               ))}
             </select>
           </div>
@@ -345,7 +345,7 @@ export default function TenantsPage() {
                   </td>
                   <td className="px-6 py-4">
                     {tenant?.plan ? (
-                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${tierColors[tenant.plan?.tier ?? 'free'] ?? tierColors.free}`}>
+                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${tierColors[tenant.plan?.tier ?? ''] ?? tierColors.free}`}>
                         {tenant.plan?.name}
                       </span>
                     ) : (

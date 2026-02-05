@@ -23,11 +23,11 @@ interface Plan {
   slug: string;
   name: string;
   description: string | null;
-  tier: string;
+  tier?: string;
   limits: PlanLimits;
-  features: PlanFeatures;
-  billing: { price_monthly?: number; price_yearly?: number; currency?: string };
-  status: string;
+  features?: PlanFeatures;
+  billing?: { price_monthly?: number; price_yearly?: number; currency?: string };
+  status?: string;
   tenantsCount: number;
 }
 

@@ -17,7 +17,7 @@ export async function GET() {
           select: {
             id: true,
             name: true,
-            tier: true
+            // tier: true // Missing in schema
           }
         }
       },

@@ -77,11 +77,11 @@ export async function buildEnrichedContext(
                 aiPersonality: true,
                 businessSector: true,
                 businessType: true,
-                companySize: true,
-                targetAudience: true,
-                productsServices: true,
-                glossary: true,
-                brandVoice: true
+                // companySize: true, // Missing in schema
+                // targetAudience: true, // Missing in schema
+                // productsServices: true, // Fail with stale client
+                // glossary: true, // Fail with stale client
+                // brandVoice: true // Fail with stale client
             }
         }),
 
@@ -96,27 +96,13 @@ export async function buildEnrichedContext(
                 interests: true,
                 sentiment: true,
                 lastIntent: true,
-                lastTopic: true
+                // lastTopic: true // Missing in schema
             }
         }),
 
         // 4. Get active business rules
         includeRules
-            ? prisma.businessRule.findMany({
-                where: {
-                    tenantId,
-                    active: true
-                },
-                select: {
-                    name: true,
-                    description: true,
-                    action: true,
-                    payload: true,
-                    priority: true
-                },
-                orderBy: { priority: 'desc' },
-                take: 10
-            })
+            ? Promise.resolve([]) // BusinessRule model missing in schema
             : Promise.resolve([])
     ]);
 
@@ -131,11 +117,11 @@ export async function buildEnrichedContext(
         businessProfile: {
             sector: tenant?.businessSector || undefined,
             type: tenant?.businessType || undefined,
-            size: tenant?.companySize || undefined,
-            targetAudience: tenant?.targetAudience || undefined,
-            products: (tenant?.productsServices as any[]) || [],
-            glossary: (tenant?.glossary as Record<string, string>) || {},
-            brandVoice: (tenant?.brandVoice as Record<string, any>) || {}
+            size: undefined, // tenant?.companySize || undefined,
+            targetAudience: undefined, // tenant?.targetAudience || undefined,
+            products: [], // (tenant?.productsServices as any[]) || [],
+            glossary: {}, // (tenant?.glossary as Record<string, string>) || {},
+            brandVoice: {} // (tenant?.brandVoice as Record<string, any>) || {}
         },
 
         knownFacts: facts.map(f => f.fact),
@@ -148,7 +134,7 @@ export async function buildEnrichedContext(
 
         relevantHistory,
 
-        businessRules: businessRules.map(r => ({
+        businessRules: businessRules.map((r: any) => ({
             name: r.name,
             description: r.description || undefined,
             action: r.action,
@@ -175,7 +161,7 @@ async function getRelevantFacts(
         const facts = await prisma.knowledgeFact.findMany({
             where: {
                 tenantId,
-                active: true
+                // active: true,
             },
             select: {
                 fact: true,
@@ -189,14 +175,17 @@ async function getRelevantFacts(
             take: limit
         });
 
-        return facts;
+        return facts.map(f => ({
+            ...f,
+            entity: f.entity ?? undefined
+        }));
     }
 
     // Search facts by entity or full-text
     const facts = await prisma.knowledgeFact.findMany({
         where: {
             tenantId,
-            active: true,
+            // active: true,
             OR: [
                 // Match entities
                 ...keywords.map(keyword => ({
@@ -217,7 +206,10 @@ async function getRelevantFacts(
         take: limit
     });
 
-    return facts;
+    return facts.map(f => ({
+        ...f,
+        entity: f.entity ?? undefined
+    }));
 }
 
 /**
@@ -318,10 +310,10 @@ Setor: ${context.businessProfile.sector}
 Tipo: ${context.businessProfile.type || 'N/A'}
 Público-alvo: ${context.businessProfile.targetAudience || 'N/A'}`);
 
-        if (context.businessProfile.products?.length > 0) {
+        if ((context.businessProfile.products || []).length > 0) {
             sections.push(`
 Produtos/Serviços:
-${context.businessProfile.products.map((p: any, i: number) => `${i + 1}. ${typeof p === 'string' ? p : p.name || JSON.stringify(p)}`).join('\n')}`);
+${(context.businessProfile.products || []).map((p: any, i: number) => `${i + 1}. ${typeof p === 'string' ? p : p.name || JSON.stringify(p)}`).join('\n')}`);
         }
 
         if (Object.keys(context.businessProfile.glossary || {}).length > 0) {

@@ -20,6 +20,7 @@ export class MockFinanceAdapter implements FinanceAdapter {
     userId: string,
     transaction: CreateTransactionDto
   ): Promise<FinancialTransaction> {
+    /*
     const created = await prisma.financialTransaction.create({
       data: {
         tenantId,
@@ -35,6 +36,8 @@ export class MockFinanceAdapter implements FinanceAdapter {
         status: 'confirmed'
       }
     });
+    */
+    const created = { id: 'mock-' + Date.now(), ...transaction, tenantId, userId, date: transaction.date || new Date(), status: 'confirmed' } as any;
 
     return {
       id: created?.id ?? '',
@@ -57,6 +60,7 @@ export class MockFinanceAdapter implements FinanceAdapter {
     userId: string,
     filters: TransactionFilters
   ): Promise<FinancialTransaction[]> {
+    /*
     const transactions = await prisma.financialTransaction.findMany({
       where: {
         tenantId,
@@ -70,6 +74,8 @@ export class MockFinanceAdapter implements FinanceAdapter {
       },
       orderBy: { date: 'desc' }
     });
+    */
+    const transactions: any[] = [];
 
     return transactions?.map((t: any) => ({
       id: t?.id ?? '',

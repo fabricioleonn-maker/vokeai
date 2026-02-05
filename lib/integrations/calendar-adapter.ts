@@ -9,6 +9,7 @@ export class MockCalendarAdapter implements CalendarAdapter {
     startDate: Date,
     endDate: Date
   ): Promise<CalendarEvent[]> {
+    /*
     const events = await prisma.calendarEvent.findMany({
       where: {
         tenantId,
@@ -19,6 +20,8 @@ export class MockCalendarAdapter implements CalendarAdapter {
       },
       orderBy: { startTime: 'asc' }
     });
+    */
+    const events: any[] = [];
 
     return events?.map(e => ({
       id: e?.id ?? '',
@@ -41,6 +44,7 @@ export class MockCalendarAdapter implements CalendarAdapter {
     userId: string,
     event: CreateEventDto
   ): Promise<CalendarEvent> {
+    /*
     const created = await prisma.calendarEvent.create({
       data: {
         tenantId,
@@ -56,6 +60,8 @@ export class MockCalendarAdapter implements CalendarAdapter {
         status: 'confirmed'
       }
     });
+    */
+    const created = { id: 'mock-' + Date.now(), ...event, tenantId, userId, startTime: event.startTime || new Date(), endTime: event.endTime || new Date(), status: 'confirmed' } as any;
 
     return {
       id: created?.id ?? '',
@@ -78,6 +84,7 @@ export class MockCalendarAdapter implements CalendarAdapter {
     eventId: string,
     updates: UpdateEventDto
   ): Promise<CalendarEvent> {
+    /*
     const updated = await prisma.calendarEvent.update({
       where: { id: eventId },
       data: {
@@ -92,6 +99,8 @@ export class MockCalendarAdapter implements CalendarAdapter {
         ...(updates?.reminder !== undefined && { reminder: updates.reminder })
       }
     });
+    */
+    const updated = { id: eventId, ...updates } as any;
 
     return {
       id: updated?.id ?? eventId,
@@ -110,10 +119,13 @@ export class MockCalendarAdapter implements CalendarAdapter {
   }
 
   async deleteEvent(tenantId: string, eventId: string): Promise<void> {
+    /*
     await prisma.calendarEvent.update({
       where: { id: eventId },
       data: { status: 'cancelled' }
     });
+    */
+    console.warn(`Mock: Deleted event ${eventId}`);
   }
 
   async findFreeSlots(
@@ -124,21 +136,21 @@ export class MockCalendarAdapter implements CalendarAdapter {
   ): Promise<TimeSlot[]> {
     const dayStart = startOfDay(date);
     const dayEnd = endOfDay(date);
-    
+
     // Work hours: 8:00 - 18:00
     const workStart = addHours(dayStart, 8);
     const workEnd = addHours(dayStart, 18);
-    
+
     const events = await this.listEvents(tenantId, userId, dayStart, dayEnd);
     const freeSlots: TimeSlot[] = [];
-    
+
     let currentSlot = workStart;
-    
+
     while (currentSlot < workEnd && freeSlots?.length < 3) {
       const slotEnd = addMinutes(currentSlot, duration);
-      
+
       if (slotEnd > workEnd) break;
-      
+
       const hasConflict = events?.some(event => {
         const eventStart = new Date(event?.startTime ?? 0);
         const eventEnd = new Date(event?.endTime ?? 0);
@@ -148,7 +160,7 @@ export class MockCalendarAdapter implements CalendarAdapter {
           (currentSlot <= eventStart && slotEnd >= eventEnd)
         );
       });
-      
+
       if (!hasConflict) {
         freeSlots.push({
           start: new Date(currentSlot),
@@ -156,10 +168,10 @@ export class MockCalendarAdapter implements CalendarAdapter {
           duration
         });
       }
-      
+
       currentSlot = addMinutes(currentSlot, 30);
     }
-    
+
     return freeSlots ?? [];
   }
 }

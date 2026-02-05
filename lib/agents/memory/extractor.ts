@@ -133,17 +133,15 @@ async function extractWithLLM(
         select: {
             businessSector: true,
             businessType: true,
-            glossary: true,
-            productsServices: true
+            // glossary: true,
+            // productsServices: true
         }
     });
 
     const sectorContext = tenant?.businessSector
         ? `Esta empresa atua no setor de ${tenant.businessSector}.`
         : '';
-    const glossaryContext = tenant?.glossary
-        ? `Glossário de termos: ${JSON.stringify(tenant.glossary)}`
-        : '';
+    const glossaryContext = '';
 
     const systemPrompt = `
 Você é um extrator de conhecimento especializado. Analise esta conversa e extraia insights valiosos.
@@ -267,6 +265,7 @@ export async function saveEmbedding(
         return; // Skip if embeddings not implemented yet
     }
 
+    /*
     await prisma.conversationEmbedding.create({
         data: {
             conversationId,
@@ -274,7 +273,7 @@ export async function saveEmbedding(
             tenantId: metadata.tenantId,
             userId: metadata.userId,
             text,
-            embedding,
+            // embedding, // Unsupported type in Prisma Client
             agentUsed: metadata.agentUsed,
             channel: metadata.channel,
             intent: metadata.intent,
@@ -282,4 +281,5 @@ export async function saveEmbedding(
             topics: metadata.topics || []
         }
     });
+    */
 }

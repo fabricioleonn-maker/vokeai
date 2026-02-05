@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
                 action: 'channel_connected',
                 entityType: 'channel',
                 entityId: integrationSlug,
-                payload: { channelType, provider }
+                metadata: { channelType, provider }
             }
         });
 

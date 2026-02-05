@@ -6,11 +6,6 @@ import { prisma } from '@/lib/db';
 export async function GET() {
   try {
     const integrations = await prisma.integrationNode.findMany({
-      include: {
-        _count: {
-          select: { tenantConfigs: true }
-        }
-      },
       orderBy: { name: 'asc' }
     });
 
@@ -20,11 +15,8 @@ export async function GET() {
       name: i?.name,
       description: i?.description,
       type: i?.type,
-      capabilities: i?.capabilities,
-      supportedAgents: i?.supportedAgents,
-      planConstraints: i?.planConstraints,
-      syncStrategy: i?.syncStrategy,
-      activeTenantsCount: i?._count?.tenantConfigs ?? 0
+      capabilities: (i?.config as any)?.capabilities ?? [],
+      activeTenantsCount: 0 // Relation not defined in schema yet
     })) ?? []);
   } catch (error) {
     console.error('Get integrations error:', error);
