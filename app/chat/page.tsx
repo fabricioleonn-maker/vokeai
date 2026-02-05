@@ -571,7 +571,7 @@ export default function ChatPage() {
             <div className="p-6 bg-cyan-600 rounded-3xl text-white shadow-xl shadow-cyan-600/20">
               <h4 className="font-black text-[10px] uppercase tracking-widest mb-3 text-cyan-100">Dica Pro</h4>
               <p className="text-sm font-medium leading-relaxed">
-                No modo de teste, você pode simular cenários complexos como: "Tive um problema com um cliente insatisfeito, como respondo?".
+                No modo de teste, você pode simular cenários complexos como: &quot;Tive um problema com um cliente insatisfeito, como respondo?&quot;.
               </p>
             </div>
           )}

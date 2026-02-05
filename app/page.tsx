@@ -206,11 +206,11 @@ export default function HomePage() {
                   <div className="space-y-4">
                     <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
                       <p className="text-xs font-bold text-slate-400 mb-2 uppercase">Instrução de Comportamento</p>
-                      <p className="text-sm text-slate-700 italic">"Seja sempre consultivo, focando em entender o problema antes de oferecer a solução..."</p>
+                      <p className="text-sm text-slate-700 italic">&quot;Seja sempre consultivo, focando em entender o problema antes de oferecer a solução...&quot;</p>
                     </div>
                     <div className="p-4 rounded-xl bg-cyan-50 border border-cyan-100">
                       <p className="text-xs font-bold text-cyan-600 mb-2 uppercase">Resultado no Chat</p>
-                      <p className="text-sm text-slate-800 font-medium">"Entendo perfeitamente o seu desafio com a agenda. Antes de marcamos, como você faz esse controle hoje?"</p>
+                      <p className="text-sm text-slate-800 font-medium">&quot;Entendo perfeitamente o seu desafio com a agenda. Antes de marcamos, como você faz esse controle hoje?&quot;</p>
                     </div>
                   </div>
                 </div>

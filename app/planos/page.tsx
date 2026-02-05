@@ -137,7 +137,7 @@ export default function PlanosPage() {
                             Investimento por <span className="text-cyan-600">Valor Entregue</span>
                         </h1>
                         <p className="text-lg text-slate-600 max-w-2xl mx-auto">
-                            Na <strong>Voke AI</strong>, não cobramos por "features". Cobramos pela transformação do seu negócio
+                            Na <strong>Voke AI</strong>, não cobramos por &quot;features&quot;. Cobramos pela transformação do seu negócio
                             através de IA com personalidade real.
                         </p>
                     </div>
@@ -175,7 +175,7 @@ export default function PlanosPage() {
                                             <Target className="w-3 h-3" /> Caso de Uso
                                         </p>
                                         <p className="text-sm font-medium leading-relaxed italic">
-                                            "{plan.useCase}"
+                                            &quot;{plan.useCase}&quot;
                                         </p>
                                     </div>
 
