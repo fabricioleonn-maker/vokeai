@@ -13,14 +13,14 @@ const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || 'G-PLACEH
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXTAUTH_URL || 'http://localhost:3000'),
-  title: 'Voke AI - Agentes Inteligentes',
+  title: 'Synkra - Agentes Inteligentes',
   description: 'Plataforma multi-tenant para orquestração de Agentes de IA',
   icons: {
     icon: '/favicon.svg',
     shortcut: '/favicon.svg'
   },
   openGraph: {
-    title: 'Voke AI',
+    title: 'Synkra',
     description: 'Agentes Inteligentes',
     images: ['/og-image.png']
   }

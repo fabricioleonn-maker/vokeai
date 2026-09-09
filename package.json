@@ -1,5 +1,5 @@
 {
-  "name": "app",
+  "name": "synkra",
   "private": true,
   "scripts": {
     "dev": "next dev",

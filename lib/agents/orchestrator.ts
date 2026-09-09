@@ -3,6 +3,8 @@ import { getTenantContext, canUseAgent } from '@/lib/core/governance';
 import { callLLM, type LLMMessage } from './llm-service';
 import type { AgentContext, OrchestratorResponse, PendingAction, AIPersonality } from '@/lib/types';
 import { AgentRunner } from '@/lib/core/runner';
+import { UsageService } from '@/lib/core/usage';
+import { v4 as uuidv4 } from 'uuid';
 
 // Intent categories for conversational routing
 export type IntentCategory = 'GREETING' | 'PRICING_PLANS' | 'SUPPORT' | 'FINANCE' | 'SECRETARY' | 'PRODUCTIVITY' | 'PROMO' | 'EXPLORATION' | 'UNKNOWN';
@@ -15,6 +17,9 @@ interface RoutingDecision {
   reason: string;
   allowed_actions: 'execute' | 'explain_only' | 'blocked';
   requires_tools: boolean;
+  sticky_used?: boolean;
+  sticky_reason?: string;
+  signals?: string[];
 }
 
 export async function processMessage(
@@ -148,10 +153,20 @@ export async function processMessage(
       }
     });
 
-    // Update UserProfile lastIntent (for conversation continuity)
-    await prisma.userProfile.update({
-      where: { userId },
-      data: { lastIntent: routing.intent }
+    // 7. Store interaction turn (optional for history)
+    await prisma.conversationTurn.create({
+      data: {
+        conversationId,
+        role: 'user',
+        content: message,
+        metadata: {
+          channel,
+          isTestMode,
+          intent: routing.intent,
+          confidence: routing.confidence,
+          sticky_used: routing.sticky_used
+        } as any
+      }
     });
 
     // 8. Save assistant message turn
@@ -160,21 +175,61 @@ export async function processMessage(
         conversationId,
         role: 'assistant',
         content: response.message,
-        metadata: { ...response.metadata, isTestMode }
+        metadata: {
+          agent: response.agentUsed,
+          model: response.metadata.model,
+          telemetry: response.metadata.telemetry
+        } as any
       }
     });
 
-    return response;
-  } catch (error: any) {
-    // Audit-ready logging (P1.3)
-    console.error('CRITICAL: processMessage failed:', {
-      error: error.message,
+    // 9. Record Final Usage & Telemetry (P1.3)
+    const tokensUsed = response.metadata.tokensUsed || 0;
+    await UsageService.trackUsage(
       tenantId,
       userId,
       conversationId,
-      intent: 'UNKNOWN',
-      agent: 'system'
+      response.metadata.model,
+      { promptTokens: 0, completionTokens: 0, totalTokens: tokensUsed },
+      routing.agent,
+      {
+        intent_detected: routing.intent,
+        intent_confidence: routing.confidence,
+        specialist_selected: routing.agent,
+        sticky_used: routing.sticky_used,
+        sticky_reason: routing.sticky_reason,
+        ...response.metadata.telemetry
+      },
+      3000
+    );
+
+    // Update UserProfile lastIntent (for conversation continuity)
+    await prisma.userProfile.upsert({
+      where: { userId },
+      update: {
+        lastIntent: routing.intent,
+        tenantId // Ensure tenantId is correct
+      },
+      create: {
+        userId,
+        tenantId,
+        lastIntent: routing.intent,
+        preferences: {},
+        sentiment: 'neutral'
+      }
     });
+
+    return {
+      ...response,
+      metadata: {
+        ...response.metadata,
+        confidence: routing.confidence,
+        reason: routing.reason
+      }
+    };
+  } catch (error: any) {
+    // Audit-ready logging (P1.3)
+    console.error('CRITICAL: processMessage failed:', error);
     return createErrorResponse(`Tivemos um problema técnico. Por favor, tente novamente em instantes.`, 'UNKNOWN', 'system');
   }
 }
@@ -198,7 +253,8 @@ async function detectRouting(
       confidence: 1.0,
       reason: 'Matched greeting regex',
       allowed_actions: 'execute',
-      requires_tools: false
+      requires_tools: false,
+      signals: ['greeting_keyword']
     };
   }
 
@@ -211,7 +267,8 @@ async function detectRouting(
       confidence: 0.95,
       reason: 'Matched pricing keywords',
       allowed_actions: 'execute',
-      requires_tools: false
+      requires_tools: false,
+      signals: ['pricing_term']
     };
   }
 
@@ -224,7 +281,8 @@ async function detectRouting(
       confidence: 0.95,
       reason: 'Matched finance terminology',
       allowed_actions: 'execute',
-      requires_tools: false
+      requires_tools: false,
+      signals: ['finance_term']
     };
   }
 
@@ -249,8 +307,22 @@ async function detectRouting(
     };
   }
 
-  // 1.5 Productivity/Agenda (Fast Path)
-  if (/agenda|tarefa|prioridade|organizar (meu dia|hoje)|pendência|pendencia|compromisso/i.test(lower)) {
+  // 1.5 Secretary/Agenda (Fast Path)
+  if (/agenda|compromisso|reunião|reuniao|marcar|calendário|calendario|agendar/i.test(lower)) {
+    return {
+      intent: 'SECRETARY',
+      agent: 'agent.secretary',
+      model: 'gpt-4o-mini',
+      confidence: 0.95,
+      reason: 'Matched secretary/agenda keywords',
+      allowed_actions: 'execute',
+      requires_tools: false,
+      signals: ['agenda_term']
+    };
+  }
+
+  // 1.6 Productivity/Tasks (Fast Path)
+  if (/tarefa|prioridade|organizar (meu dia|hoje)|pendência|pendencia|checklist|email|documento|planilha/i.test(lower)) {
     return {
       intent: 'PRODUCTIVITY',
       agent: 'agent.productivity',
@@ -258,7 +330,8 @@ async function detectRouting(
       confidence: 0.95,
       reason: 'Matched productivity keywords',
       allowed_actions: 'execute',
-      requires_tools: false
+      requires_tools: false,
+      signals: ['productivity_term']
     };
   }
 
@@ -281,18 +354,23 @@ async function detectRouting(
   const words = lower.split(/\s+/).filter(Boolean);
   const isShortFollowup = words.length <= 6;
   const followupPhrases =
-    /^(ok|certo|entendi|beleza|sim|não|nao|ainda não|ainda nao|não funcionou|nao funcionou|não deu|nao deu|quero entender melhor|me explica melhor|pode explicar|como assim)$/i
+    /^(ok|certo|entendi|beleza|sim|não|nao|ainda não|ainda nao|não funcionou|nao funcionou|não deu|nao deu|quero entender melhor|me explica melhor|pode explicar|como assim|continua|proximo|próximo)$/i
       .test(lower);
 
+  // Sticky refinement: Only if low confidence on other paths or explicit follow-up
   if ((isShortFollowup || followupPhrases) && context?.lastIntent) {
     const last = context.lastIntent as string;
-    // Sticky for operational intents
-    if (['SUPPORT', 'FINANCE', 'PRODUCTIVITY', 'PRICING_PLANS'].includes(last)) {
+
+    // Check if there's a clear subject change
+    const subjectChange = /mudar de assunto|outra coisa|falar sobre|quero ver|agora/i.test(lower) && words.length > 3;
+
+    if (!subjectChange && ['SUPPORT', 'FINANCE', 'PRODUCTIVITY', 'PRICING_PLANS', 'SECRETARY'].includes(last)) {
       const agentByIntent: Record<string, string> = {
         SUPPORT: 'agent.support.n1',
         FINANCE: 'agent.finance',
         PRODUCTIVITY: 'agent.productivity',
         PRICING_PLANS: 'agent.sales',
+        SECRETARY: 'agent.secretary'
       };
 
       return {
@@ -300,24 +378,28 @@ async function detectRouting(
         agent: agentByIntent[last] || 'agent.support.n1',
         model: 'gpt-4o-mini',
         confidence: 0.85,
-        reason: `Sticky intent from lastIntent=${last} for short follow-up`,
+        reason: `Sticky intent: ${last} based on continuity check`,
         allowed_actions: 'execute',
-        requires_tools: false
+        requires_tools: false,
+        sticky_used: true,
+        sticky_reason: followupPhrases ? 'followup_phrase' : 'short_input_continuity'
       };
     }
   }
 
   // 2. LLM fallback for ambiguity (P0.1 silent prompt)
-  const classificationPrompt = `Classifique a intenção do usuário no VokeAI.
+  const classificationPrompt = `Classifique a intenção do usuário na Synkra.
 Retorne APENAS um JSON seguindo o contrato:
 {
   "intent": "GREETING | PRICING_PLANS | SUPPORT | FINANCE | SECRETARY | PRODUCTIVITY | PROMO | EXPLORATION | UNKNOWN",
   "agent": "agent.support.n1 | agent.sales | agent.finance | agent.secretary | agent.productivity | agent.promohunter",
   "model": "gpt-4o-mini | gpt-4o",
   "confidence": 0.0-1.0,
-  "reason": "EXPLORATION se for teste, palavra solta, curiosidade ou algo vago",
+  "reason": "Explicação curta",
   "allowed_actions": "execute | explain_only | blocked",
-  "requires_tools": boolean
+  "requires_tools": boolean,
+  "signals": ["keyword1", "tag2"],
+  "top_k": [{"intent": "ALT_INTENT", "score": 0.X}]
 }
 
 User Message: "${message}"`;

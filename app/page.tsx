@@ -64,7 +64,7 @@ export default function HomePage() {
               <div className="relative h-[56px] w-[210px]">
                 <Image
                   src="/logo_voke_ai_transparent.png"
-                  alt="Voke AI"
+                  alt="Synkra"
                   fill
                   className="object-contain"
                   priority
@@ -171,7 +171,7 @@ export default function HomePage() {
                   <span className="text-cyan-600">Personalidade Única.</span>
                 </h2>
                 <p className="text-lg text-slate-600 mb-8 leading-relaxed">
-                  O grande diferencial da <strong>Voke AI</strong> é o <strong>Treinamento de Personalidade</strong>.
+                  O grande diferencial da <strong>Synkra</strong> é o <strong>Treinamento de Personalidade</strong>.
                   Não entregamos apenas código, entregamos comportamento.
                 </p>
                 <ul className="space-y-4">
@@ -298,11 +298,11 @@ export default function HomePage() {
 
       <footer className="py-12 px-6 border-t border-slate-100">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
-          <p className="text-slate-500 text-sm font-medium">© 2026 Voke AI • Inteligência que Transforma</p>
+          <p className="text-slate-500 text-sm font-medium">© 2026 Synkra • Inteligência que Transforma</p>
           <div className="flex items-center gap-8 text-sm font-bold text-slate-600">
             <Link href="#" className="hover:text-cyan-600 transition-colors">Termos</Link>
             <Link href="#" className="hover:text-cyan-600 transition-colors">Privacidade</Link>
-            <Link href="mailto:contato@vokeai.com.br" className="hover:text-cyan-600 transition-colors">Suporte</Link>
+            <Link href="mailto:contato@synkra.com.br" className="hover:text-cyan-600 transition-colors">Suporte</Link>
           </div>
         </div>
       </footer>

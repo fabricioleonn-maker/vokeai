@@ -140,7 +140,8 @@ model AgentNode {
   description String?
   category    String // sales, support, finance...
   status      String  @default("active")
-  config      Json    @default("{}") // Contém behavior, prompts, permissions, etc.
+  prompts     Json?   @default("{}") // Prompts base (system_base, etc)
+  config      Json    @default("{}") // Contém behavior, permissions, etc.
 
   tenantId String?
   tenant   Tenant? @relation(fields: [tenantId], references: [id])
@@ -333,6 +334,7 @@ model AIUsageLog {
   completionTokens Int
   totalTokens      Int
   purpose          String?  // orchestrator, sales, support, etc.
+  metadata         Json?    // Cognitive telemetry
   createdAt        DateTime @default(now())
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)

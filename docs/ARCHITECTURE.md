@@ -1,18 +1,18 @@
-# Arquitetura da Voke AI
+# Arquitetura da Synkra
 
 ## Visão Geral
 
-A Voke AI é uma **plataforma SaaS multi-tenant** que governa um hub universal de agentes de IA. Ele atua como o "source of truth" que controla quais agentes existem, quais integrações estão disponíveis, quais clientes (tenants) podem usar quais recursos, e com quais permissões.
+A Synkra é uma **plataforma SaaS multi-tenant** que governa um hub universal de agentes de IA. Ele atua como o "source of truth" que controla quais agentes existem, quais integrações estão disponíveis, quais clientes (tenants) podem usar quais recursos, e com quais permissões.
 
 ## Diagrama de Componentes
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        VOKE AI MVP                             │
+│                        SYNKRA MVP                              │
 ├─────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  ┌─────────────────┐   ┌─────────────────┐   ┌─────────────────┐  │
-│  │   CHANNELS     │   │   CORE (VOKE AI)│   │    AGENTS       │  │
+│  │   CHANNELS     │   │   CORE (SYNKRA) │   │    AGENTS       │  │
 │  ├─────────────────┤   ├─────────────────┤   ├─────────────────┤  │
 │  │ • Web Chat     │   │ • Governance    │   │ • Orchestrator  │  │
 │  │ • WhatsApp*    │──▶│ • Permissions   │──▶│ • Secretary     │  │
@@ -76,7 +76,7 @@ A Voke AI é uma **plataforma SaaS multi-tenant** que governa um hub universal d
 ### Core (lib/core)
 - **Governança**: Validação de permissões por tenant/plano
 - **Contexto**: Gerenciamento de contexto de conversa
-- **Repositórios**: Acesso a dados da Voke AI
+- **Repositórios**: Acesso a dados da Synkra
 
 ### Agents (lib/agents)
 - **Orchestrator**: Roteamento, handoff, unificação de respostas

@@ -57,19 +57,23 @@ export default function ChatPage() {
 
   // Mount effect and load tenants
   useEffect(() => {
+    console.log('ChatPage mounted, test mode:', isTestMode);
     setMounted(true);
     // Load available tenants
     fetch('/api/admin/tenants')
       .then(async res => {
+        console.log('Fetch /api/admin/tenants status:', res.status);
         if (!res.ok) {
           const errorData = await res.json().catch(() => ({}));
+          console.error('Fetch tenants error data:', errorData);
           throw new Error(errorData.error || `Erro ${res.status}`);
         }
         return res.json();
       })
       .then((data: TenantOption[]) => {
+        console.log('Tenants loaded:', data);
         if (!Array.isArray(data)) {
-          console.error('Invalid tenants data:', data);
+          console.error('Invalid tenants data format:', data);
           setTenants([]);
           return;
         }
@@ -77,18 +81,24 @@ export default function ChatPage() {
 
         if (isTestMode) {
           const testTenant = data.find((t: any) => t.slug === 'voke' || t.slug === 'matriz' || t.status === 'active');
-          if (testTenant) setTenantId(testTenant.id);
+          if (testTenant) {
+            console.log('Setting test tenantId:', testTenant.id);
+            setTenantId(testTenant.id);
+          }
         } else {
           const activeTenant = data.find((t: any) => t.status === 'active');
           if (activeTenant) {
+            console.log('Setting active tenantId:', activeTenant.id);
             setTenantId(activeTenant.id);
           } else if (data.length > 0) {
+            console.log('Setting first available tenantId:', data[0].id);
             setTenantId(data[0].id);
           }
         }
       })
       .catch(err => {
-        console.error('Failed to load tenants:', err);
+        console.error('CRITICAL: Failed to load tenants:', err);
+        alert(`Erro ao carregar o chat: ${err.message}`);
         setTenants([]);
       });
   }, [isTestMode]);

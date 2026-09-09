@@ -45,9 +45,37 @@ export class AgentRunner {
 
         let finalMessage = llmResponse.content;
 
-        // 4. Apply Guardrails (P1.2 & P0.4)
+        // 4. Apply Guardrails & Post-Checks (Cognitive Hardening)
+        const guardrails = await this.executeGuardrails(message, llmResponse.content, intent, context);
+
+        // 5. Fallback Orchestration
+        let fallbackType: 'none' | 'clarify_once' | 'regenerate_once' = 'none';
+
+        if (guardrails.verdict === 'HARD_FAIL') {
+            // Attempt 1: Regenerate with "stay-on-intent" instruction
+            const retryResponse = await callLLM({
+                systemPrompt: systemPrompt + "\n\nCRITICAL: A resposta anterior foi sinalizada como fora de domínio ou temporalmente desalinhada. REGENERE focando exclusivamente no intent detectado e no horizonte temporal solicitado. Cumpra a regra ANSWER FIRST.",
+                conversationHistory,
+                agentConfig: { model: model || 'gpt-4o-mini', tier: 'lite' }
+            });
+
+            const retryGuardrail = await this.executeGuardrails(message, retryResponse.content, intent, context);
+            if (retryGuardrail.verdict === 'HARD_FAIL' || retryGuardrail.verdict === 'SOFT_FAIL') {
+                // Persistent failure -> Fallback to Clarify-1
+                finalMessage = "Entendi o seu pedido, mas para ser mais preciso: você está se referindo a [assunto do intent] ou gostaria de tratar de outra coisa?";
+                fallbackType = 'clarify_once';
+            } else {
+                finalMessage = retryResponse.content;
+                fallbackType = 'regenerate_once';
+            }
+        } else if (guardrails.verdict === 'SOFT_FAIL') {
+            // Keep message + append short alignment question
+            finalMessage = `${llmResponse.content}\n\nConsegui te ajudar com isso ou você tinha algo mais específico em mente sobre ${intent.toLowerCase()}?`;
+            fallbackType = 'clarify_once';
+        }
+
+        // Apply visual/formatting cleanup
         finalMessage = PromptComposer.applyGuardrails(finalMessage);
-        finalMessage = this.applyAnswerFirstGuardrail(intent, finalMessage);
 
         // Determine allowed actions based on plan limits
         const isExhausted = (context.planLimits as any).isExhausted || (context as any).aiUsage?.state === 'EXHAUSTED';
@@ -61,43 +89,94 @@ export class AgentRunner {
                 agent: agentSlug,
                 model: model || 'gpt-4o-mini',
                 confidence: 1.0,
-                reason: 'Successfully executed agent',
+                reason: 'Executed with cognitive hardening',
                 allowed_actions: runnerAllowedActions,
                 requires_tools: false,
-                tokensUsed: llmResponse.usage?.total_tokens
+                tokensUsed: llmResponse.usage?.total_tokens,
+                // Telemetry (P1.3)
+                telemetry: {
+                    coherence: guardrails,
+                    fallback_type: fallbackType,
+                    loop_guard_triggered: guardrails.loop_guard_triggered
+                }
             }
         };
     }
 
     /**
-     * Ensure the agent answers before questioning (P0.4)
+     * Executes all runtime cognitive checks
      */
-    private static applyAnswerFirstGuardrail(intent: string, text: string): string {
-        const trimmed = text.trim();
+    private static async executeGuardrails(input: string, output: string, intent: string, context: AgentContext) {
+        const domainScore = this.calculateDomainCoherence(output, intent);
+        const temporalScore = this.calculateTemporalAlignment(input, output);
+        const loopTriggered = this.detectLoop(output, context.recentMessages);
 
-        // Guardrail for Plans/Pricing
-        if (intent === 'PRICING_PLANS' || intent === 'price') {
-            // If starts with a question but no answer seemed to be given (rough heuristic)
-            if (trimmed.startsWith('?') || (/^(Antes|Para|Me conta)/i.test(trimmed) && !trimmed.includes('R$'))) {
-                // This is a simplified check - in a real scenario we might need a small classifier or better regex
-                // For now, if it looks like it's ONLY asking a question, we might want to flag it or prefix a default answer
-                // But the prompt should handle most of this. This is the "backstop".
-            }
+        // Verdict Logic
+        let verdict: 'PASS' | 'SOFT_FAIL' | 'HARD_FAIL' = 'PASS';
+        if (domainScore < 0.45 || (temporalScore < 0.40 && temporalScore !== -1)) {
+            verdict = 'HARD_FAIL';
+        } else if (domainScore < 0.60 || (temporalScore < 0.55 && temporalScore !== -1)) {
+            verdict = 'SOFT_FAIL';
         }
 
-        // Guardrail for Exploration/Vague tests
-        if (intent === 'EXPLORATION') {
-            return "Vejo que você está testando por aqui 🙂\nMe diz: você quer ajuda com atendimento, vendas ou organização interna?";
-        }
+        return {
+            domain_score: domainScore,
+            temporal_score: temporalScore,
+            loop_guard_triggered: loopTriggered,
+            verdict
+        };
+    }
 
-        // Guardrail for Greetings (Pedro)
-        if (intent === 'GREETING' && (trimmed.includes('qual seu nome') || trimmed.includes('sua empresa'))) {
-            // Decoupled Identity: The runner should not hardcode the "Pedro" persona.
-            // If the composer didn't inject it and the LLM failed to stick to it, 
-            // we return a neutral but helpful response.
-            return "Olá! Sou seu assistente virtual e estou aqui para ajudar com atendimento, vendas ou organização interna. Como posso ser útil?";
-        }
+    /**
+     * Heuristic Domain Coherence (coherence_ruleset_v1)
+     */
+    private static calculateDomainCoherence(text: string, intent: string): number {
+        const lower = text.toLowerCase();
+        const keywords: Record<string, string[]> = {
+            'FINANCE': ['saldo', 'extrato', 'fluxo', 'caixa', 'pagamento', 'conta', 'receita', 'despesa', 'valor', 'r$'],
+            'SECRETARY': ['agenda', 'compromisso', 'reunião', 'calendário', 'horário', 'marcar', 'agendar', 'confirmar'],
+            'SUPPORT': ['ajuda', 'erro', 'acesso', 'senha', 'problema', 'suporte', 'configurar'],
+            'SALES': ['preço', 'plano', 'valor', 'assinatura', 'comprar', 'contratar', 'demonstração'],
+            'PRODUCTIVITY': ['tarefa', 'prioridade', 'organizar', 'email', 'checklist', 'documento', 'planilha']
+        };
 
-        return text;
+        const targetKeywords = keywords[intent] || [];
+        if (targetKeywords.length === 0) return 1.0; // Intent without rules passes by default
+
+        const matches = targetKeywords.filter(kw => lower.includes(kw));
+        return matches.length / Math.min(targetKeywords.length, 3); // Normalized score (max 3 hits)
+    }
+
+    /**
+     * Temporal Alignment Check
+     */
+    private static calculateTemporalAlignment(input: string, output: string): number {
+        const markers = ['hoje', 'amanhã', 'amanha', 'semana', 'mês', 'mes', 'prazo', 'urgente'];
+        const inputMarkers = markers.filter(m => input.toLowerCase().includes(m));
+
+        if (inputMarkers.length === 0) return -1; // No temporal context requested
+
+        const outputMarkers = markers.filter(m => output.toLowerCase().includes(m));
+        const matched = inputMarkers.filter(m => outputMarkers.includes(m));
+
+        return matched.length / inputMarkers.length;
+    }
+
+    /**
+     * Anti-Loop Jaccard Similarity (Simplified)
+     */
+    private static detectLoop(current: string, history: { content: string }[]): boolean {
+        if (history.length === 0) return false;
+        const lastAssistant = history[history.length - 1]?.content || '';
+        if (!lastAssistant) return false;
+
+        const currentWords = new Set(current.toLowerCase().split(/\s+/));
+        const lastWords = new Set(lastAssistant.toLowerCase().split(/\s+/));
+
+        const intersection = new Set([...currentWords].filter(x => lastWords.has(x)));
+        const union = new Set([...currentWords, ...lastWords]);
+
+        const similarity = intersection.size / union.size;
+        return similarity > 0.70; // High similarity threshold
     }
 }

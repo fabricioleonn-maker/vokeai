@@ -92,7 +92,7 @@ export default function PlanosPage() {
                             <div className="relative h-[56px] w-[210px]">
                                 <Image
                                     src="/logo_voke_ai_transparent.png"
-                                    alt="Voke AI"
+                                    alt="Synkra"
                                     fill
                                     className="object-contain"
                                 />
@@ -137,7 +137,7 @@ export default function PlanosPage() {
                             Investimento por <span className="text-cyan-600">Valor Entregue</span>
                         </h1>
                         <p className="text-lg text-slate-600 max-w-2xl mx-auto">
-                            Na <strong>Voke AI</strong>, não cobramos por &quot;features&quot;. Cobramos pela transformação do seu negócio
+                            Na <strong>Synkra</strong>, não cobramos por &quot;features&quot;. Cobramos pela transformação do seu negócio
                             através de IA com personalidade real.
                         </p>
                     </div>
@@ -220,7 +220,7 @@ export default function PlanosPage() {
                                     ))}
                                 </div>
                                 <p className="text-sm font-medium text-slate-700">
-                                    +250 empresas já evoluíram com a Voke AI
+                                    +250 empresas já evoluíram com a Synkra
                                 </p>
                             </div>
                         </div>
@@ -243,11 +243,11 @@ export default function PlanosPage() {
 
             <footer className="py-12 px-6 border-t border-slate-100">
                 <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
-                    <p className="text-slate-500 text-sm font-medium">© 2026 Voke AI • Inteligência que Transforma</p>
+                    <p className="text-slate-500 text-sm font-medium">© 2026 Synkra • Inteligência que Transforma</p>
                     <div className="flex items-center gap-8 text-sm font-bold text-slate-600">
                         <Link href="#" className="hover:text-cyan-600 transition-colors">Termos</Link>
                         <Link href="#" className="hover:text-cyan-600 transition-colors">Privacidade</Link>
-                        <Link href="mailto:contato@vokeai.com.br" className="hover:text-cyan-600 transition-colors">Suporte</Link>
+                        <Link href="mailto:contato@synkra.com.br" className="hover:text-cyan-600 transition-colors">Suporte</Link>
                     </div>
                 </div>
             </footer>

@@ -13,13 +13,14 @@ export async function GET() {
         name: true,
         status: true,
         createdAt: true,
+        /* 
         plan: {
           select: {
             id: true,
             name: true,
-            // tier: true // Missing in schema
           }
         }
+        */
       },
       where: {
         status: 'active' // Only active tenants
@@ -33,7 +34,7 @@ export async function GET() {
       slug: t.slug,
       name: t.name,
       status: t.status,
-      plan: t.plan,
+      // plan: t.plan,
       createdAt: t.createdAt
     })));
   } catch (error: any) {

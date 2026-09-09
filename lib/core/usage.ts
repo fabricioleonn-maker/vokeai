@@ -110,6 +110,7 @@ export const UsageService = {
         model: string,
         usage: TokenUsage,
         purpose: string = 'general',
+        metadata: any = {},
         reservedAmount: number = 2000
     ) {
         const { totalTokens } = usage;
@@ -127,7 +128,8 @@ export const UsageService = {
                     promptTokens: usage.promptTokens,
                     completionTokens: usage.completionTokens,
                     totalTokens,
-                    purpose
+                    purpose,
+                    metadata
                 }
             }),
             // 2. Update real usage and clear reservation
