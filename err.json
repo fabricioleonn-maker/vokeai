@@ -1,0 +1,1 @@
+{"error":"Erro ao buscar tenants","details":"\nInvalid `prisma.tenant.findMany()` invocation:\n\n\nError querying the database: FATAL: Tenant or user not found"}

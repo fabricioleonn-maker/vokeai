@@ -4,9 +4,9 @@ echo ==========================================
 echo      SYNKRA - SCRIPT DE CORRECAO
 echo ==========================================
 echo.
-echo [1/3] Parando servidores Node.js antigos...
-taskkill /F /IM node.exe /T 2>nul
-echo Servidores parados.
+echo [1/3] Limpando ambiente (Opcional - Taskkill desativado para evitar conflitos)...
+rem taskkill /F /IM node.exe /T 2>nul
+echo Servidores anteriores ignorados.
 echo.
 
 echo [2/3] Regenerando Prisma Client (Aplica correcoes de Schema)...

@@ -10,6 +10,7 @@ import {
   FileText, ChevronRight, Menu, X, LogOut, MessageSquare, Home, Brain
 } from 'lucide-react';
 import { signOut } from 'next-auth/react';
+import { ModuleSelector } from '@/components/layout/module-selector';
 
 const menuItems = [
   { href: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
@@ -46,19 +47,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <aside className={`fixed inset-y-0 left-0 z-40 w-56 bg-white border-r border-gray-200 transform transition-transform lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}>
         <div className="flex flex-col h-full">
-          {/* Logo */}
-          <div className="p-4 border-b border-gray-100 flex items-center justify-center">
-            <Link href="/" className="flex items-center justify-center w-full">
-              <div className="relative h-20 w-full">
-                <Image
-                  src="/logo_voke_ai_transparent.png"
-                  alt="Voke AI"
-                  fill
-                  className="object-contain"
-                  priority
-                />
-              </div>
-            </Link>
+          {/* Logo / Module Selector */}
+          <div className="p-4 border-b border-gray-100">
+            <ModuleSelector />
           </div>
 
           {/* Navigation */}

@@ -324,6 +324,287 @@ model PromoAlertLog {
   error   String?
 }
 
+// ==================== GLOBAL SCHEDULER & GOVERNANCE (Phase 7) ====================
+
+enum DevOsEnvironment {
+  dev
+  staging
+  prod
+}
+
+enum DevOsScheduleType {
+  cron
+  event
+}
+
+enum DevOsExecutionMode {
+  auto
+  manual
+  full
+}
+
+enum DevOsQueueStatus {
+  PENDING
+  BLOCKED
+  READY
+  RUNNING
+  SUCCEEDED
+  FAILED
+  RETRY_WAIT
+  CANCELLED
+}
+
+enum DevOsTriggerSource {
+  schedule
+  manual
+  event
+}
+
+model DevOsScheduledJob {
+  id              String            @id @default(uuid())
+  tenantId        String
+  projectId       String?
+  name            String
+  module          String
+  environment     DevOsEnvironment
+  scheduleType    DevOsScheduleType
+  cronExpression  String?
+  eventName       String?
+  executionMode   DevOsExecutionMode
+  enabled         Boolean           @default(true)
+  payload         Json?
+  intent          String?           @db.Text
+  priority        Int               @default(5)
+  lastRunAt       DateTime?
+  nextRunAt       DateTime?
+  
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  queueEntries    DevOsExecutionQueue[]
+}
+
+model DevOsExecutionQueue {
+  id              String            @id @default(uuid())
+  tenantId        String
+  jobId           String
+  job             DevOsScheduledJob @relation(fields: [jobId], references: [id])
+  environment     DevOsEnvironment
+  module          String
+  status          DevOsQueueStatus  @default(PENDING)
+  priority        Int               @default(5)
+  scheduledAt     DateTime
+  availableAt     DateTime
+  startedAt       DateTime?
+  completedAt     DateTime?
+  attempts        Int               @default(0)
+  maxAttempts     Int               @default(3)
+  replanCount     Int               @default(0)
+  parentQueueId   String?
+  attemptedAt     DateTime?
+  failureCode     String?
+  failureReason   String?           @db.Text
+  triggerSource   DevOsTriggerSource
+  lockedAt        DateTime?
+  lockOwner       String?
+  payload         Json?
+  
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@unique([tenantId, jobId, scheduledAt, environment])
+  @@index([tenantId, status])
+  @@index([availableAt])
+  @@index([priority])
+  @@index([tenantId, module, environment])
+}
+
+model DevOsJobRun {
+  id                     String    @id @default(uuid())
+  tenantId               String
+  jobId                  String
+  queueId                String
+  graphId                String?   // Phase 15
+  graph                  DevOsExecutionGraph?
+  status                 String    @default("RUNNING") // RUNNING, SUCCESS, FAILED
+  startedAt              DateTime? @default(now())
+  completedAt            DateTime?
+  durationMs             Int?
+  actualCost             Float?    // Phase 15
+  actualDurationMs       Int?      // Phase 15
+  
+  // Scoring & Intelligence
+  executionDecisionScore Float?
+  scoreBreakdownJson     Json?
+  optimizationSource     String?
+  executionFingerprint   String?
+  
+  // Model & Window
+  selectedModel          String?
+  performanceTier        String?
+  costTier               String?
+  windowSlot             String?
+  
+  // Usage
+  estimatedInputTokens   Int?
+  estimatedOutputTokens  Int?
+  actualInputTokens      Int?
+  actualOutputTokens     Int?
+  estimatedCost          Float?
+  
+  logs                   Json?
+  environment            String    @default("prod")
+  executor               String?
+  parentRunId            String?
+  createdAt              DateTime  @default(now())
+
+  @@index([tenantId])
+  @@index([jobId])
+  @@index([status])
+  @@index([executionFingerprint])
+  @@index([parentRunId])
+  @@index([graphId])
+}
+
+model DevOsJobAuditLog {
+  id              String            @id @default(uuid())
+  tenantId        String
+  jobId           String?
+  runId           String?
+  action          String
+  actor           String
+  metadata        Json?
+  createdAt       DateTime          @default(now())
+
+  @@index([tenantId])
+  @@index([jobId])
+}
+
+model DevOsTenantConfig {
+  id                        String   @id @default(uuid())
+  tenantId                  String   @unique
+  maxConcurrentJobs         Int      @default(2)
+  maxRetries                Int      @default(3)
+  
+  // Phase 11: Global Intelligence Reciprocity
+  enableGlobalIntelligence  Boolean  @default(false) 
+  bootstrapMode             Boolean  @default(false) // temporary exception for onboarding
+  
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+}
+
+// ==================== PHASE 10: AI OPS / ADAPTIVE OPTIMIZATION ====================
+
+model DevOsOptimizationInsight {
+  id              String   @id @default(uuid())
+  tenantId        String
+  module          String
+  jobType         String?
+  fingerprint     String?
+  insightType     String   // cost_optimization, performance_routing, window_shift
+  title           String
+  description     String   @db.Text
+  confidence      Float    @default(0.0)
+  impactScore     Float    @default(0.0)
+  metadataJson    Json?    @default("{}")
+  source          String   // performance_miner, cost_analyzer
+  status          String   @default("active") // active, applied, dismissed
+  createdAt       DateTime @default(now())
+
+  @@index([tenantId, module, status])
+  @@index([fingerprint])
+}
+
+model DevOsExecutionMetricSnapshot {
+  id              String   @id @default(uuid())
+  tenantId        String
+  module          String
+  windowSlot      String   // eg: "08:00-09:00"
+  avgLatencyMs    Float    @default(0.0)
+  successRate     Float    @default(0.0)
+  avgCost         Float    @default(0.0)
+  retryRate       Float    @default(0.0)
+  abortRate       Float    @default(0.0)
+  sampleSize      Int      @default(0)
+  createdAt       DateTime @default(now())
+
+  @@index([tenantId, module, windowSlot])
+}
+
+model DevOsOptimizationPolicy {
+  id                           String   @id @default(uuid())
+  tenantId                     String
+  module                       String   @default("GLOBAL") // "GLOBAL" mean applies to all modules without specific override
+  routingModeDefault           String   @default("balanced") // cost_first, performance_first, balanced
+  maxAllowedEstimatedCost      Float?
+  allowDelayForSavings         Boolean  @default(false)
+  performancePriorityThreshold Float    @default(0.8)
+  autoApplyRecommendations     Boolean  @default(false)
+  active                       Boolean  @default(true)
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+
+  @@unique([tenantId, module])
+}
+
+// ==================== PHASE 11: GLOBAL INTELLIGENCE LAYER ====================
+
+model DevOsGlobalInsight {
+  id                 String   @id @default(uuid())
+  globalFingerprint  String   @unique // hash(jobType + module + env + complexity + payloadTier + errorCode)
+  jobType            String
+  module             String
+  environment        String
+  errorCode          String?
+  
+  successRate        Float    @default(0.0)
+  bestStrategy       String?
+  bestModel          String?
+  avgCost            Float    @default(0.0)
+  avgLatency         Float    @default(0.0)
+  retryEffectiveness Float    @default(0.0)
+  
+  sampleSize         Int      @default(0)
+  tenantCount        Int      @default(0) // Multi-tenant diversity count
+  confidenceScore    Float    @default(0.0)
+  confidenceLevel    String   @default("LOW") // LOW, MEDIUM, HIGH
+  
+  metadataJson       Json?    @default("{}")
+  lastUpdatedAt      DateTime @default(now())
+
+  @@index([globalFingerprint])
+  @@index([jobType, module, errorCode])
+}
+
+model DevOsGlobalMetricSnapshot {
+  id                 String   @id @default(uuid())
+  globalFingerprint  String
+  timestamp          DateTime @default(now())
+  
+  successCount       Int      @default(0)
+  failCount          Int      @default(0)
+  avgCost            Float    @default(0.0)
+  avgLatencyMs       Float    @default(0.0)
+  
+  @@index([globalFingerprint, timestamp])
+}
+
+model DevOsGlobalPattern {
+  id                 String   @id @default(uuid())
+  patternName        String   @unique
+  description        String?  @db.Text
+  matchingLogicJson  Json     // Rules for identifying the pattern
+  recommendedAction  String
+  globalImpactScore  Float    @default(0.0)
+  
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+}
+
+
+
+
 model AIUsageLog {
   id               String   @id @default(cuid())
   tenantId         String
@@ -340,4 +621,609 @@ model AIUsageLog {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, createdAt])
+}
+
+// ==================== DEVOS ====================
+
+enum DevOsExecutionPattern {
+  SEQUENTIAL
+  PARALLEL
+  HYBRID
+}
+
+enum DevOsStrategyMode {
+  SAFE
+  FAST
+  DEEP
+}
+
+enum DevOsRiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum DevOsDecisionType {
+  ARCHITECTURE
+  STRATEGY
+  REPLAN
+  EXECUTION
+  RISK
+  QUALITY
+}
+
+enum DevOsReplanMode {
+  RECOVERY
+  OPTIMIZATION
+  SCOPE_CHANGE
+  QUALITY_FIX
+}
+
+model DevOsProject {
+  id               String   @id @default(cuid())
+  tenantId         String
+  name             String
+  objective        String   @db.Text
+  status           String   @default("PLANNING") // PLANNING | EXECUTING | BLOCKED | FAILED | COMPLETED
+  strategy         String   @default("safe")      // safe | fast | deep
+  progress         Int      @default(0)
+
+  // Context Structure: businessGoal, constraints, techStack, expectedOutcome
+  context          Json     @default("{\"businessGoal\": \"\", \"constraints\": [], \"techStack\": [], \"expectedOutcome\": \"\"}")
+
+  sessions         DevOsSession[]
+  
+  // V3 Intelligence Relations
+  brain            DevOsProjectBrain?
+  health           DevOsProjectHealth?
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([tenantId, status])
+}
+
+model DevOsProjectBrain {
+  id               String   @id @default(cuid())
+  tenantId         String
+  projectId        String   @unique
+  project          DevOsProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  // Cognitive State
+  goalSummary       String   @db.Text
+  constraintsDigest String   @db.Text
+  memoryVersion     Int      @default(1)
+  
+  // Config & Patterns
+  executionPattern DevOsExecutionPattern @default(SEQUENTIAL)
+  strategyMode     DevOsStrategyMode     @default(SAFE)
+  
+  // Metrics derived from Brain
+  coherenceScore   Float    @default(1.0)
+  driftScore       Float    @default(0.0)
+  volatilityScore  Float    @default(0.1)
+  
+  decisions        DevOsDecisionLog[]
+  
+  lastDecisionAt   DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([tenantId, projectId])
+}
+
+model DevOsProjectHealth {
+  id               String   @id @default(cuid())
+  tenantId         String
+  projectId        String   @unique
+  project          DevOsProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  // Real-time Health
+  score            Int      @default(100) // 0-100 derived
+  riskLevel        DevOsRiskLevel @default(LOW)
+  stability        Float    @default(1.0)
+  
+  // Statistics
+  successRate      Float    @default(1.0)
+  avgTaskQuality   Float    @default(1.0)
+  replanCount      Int      @default(0)
+  blockersCount    Int      @default(0)
+  failedTasksCount Int      @default(0)
+  
+  lastReplanAt     DateTime?
+  lastBlockedAt    DateTime?
+  updatedAt        DateTime @updatedAt
+
+  @@index([tenantId, projectId, score])
+}
+
+model DevOsDecisionLog {
+  id               String   @id @default(cuid())
+  tenantId         String
+  projectId        String
+  brainId          String
+  brain            DevOsProjectBrain @relation(fields: [brainId], references: [id], onDelete: Cascade)
+  
+  sessionId        String?
+  taskId           String?
+  
+  type             DevOsDecisionType
+  decision         String   @db.Text
+  reasoning        String   @db.Text
+  impact           String?
+  confidence       Float    @default(1.0)
+  
+  applied          Boolean  @default(true)
+  snapshotVersion  Int
+  
+  createdAt        DateTime @default(now())
+
+  // Mandatory Production Indices
+  @@index([tenantId, brainId, createdAt])
+  @@index([tenantId, sessionId])
+  @@index([tenantId, taskId])
+  @@index([tenantId, projectId, type])
+}
+
+model DevOsSession {
+  id               String   @id @default(cuid())
+  tenantId         String
+  userId           String
+  objective        String   @db.Text
+  status           String   @default("ACTIVE") // ACTIVE | PAUSED | COMPLETED | FAILED | REPLANNING
+  strategy         String   @default("safe")
+  executionMode    String   @default("manual") // manual | auto
+  
+  progress         Int      @default(0) // 0-100
+  iteration        Int      @default(0)
+
+  // Session Memory (accumulates context across cycles)
+  memory           Json     @default("{\"decisions\":[], \"patterns\":[], \"previous_failures\":[]}")
+
+  // Loop Control
+  maxIterations    Int      @default(20)
+  currentIteration Int      @default(0)
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  tasks     DevOsTask[]
+  auditLogs DevOsAuditLog[]
+
+  projectId        String?
+  project          DevOsProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+}
+
+model DevOsTask {
+  id          String  @id @default(cuid())
+  sessionId   String
+  session     DevOsSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String?
+  intent      String?
+  priority    String  @default("MEDIUM") // LOW | MEDIUM | HIGH | CRITICAL
+  status      String  @default("PENDING") // PENDING | IN_PROGRESS | BLOCKED | COMPLETED | SUGGESTION_ONLY | FAILED
+
+  // Dependency Tracking
+  dependsOn   Json?   @default("[]") // String[] of task IDs
+
+  // Execution Output
+  suggestion  String?
+  suggestedFiles Json?  @default("[]")
+  qualityScore Float?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  auditLogs   DevOsAuditLog[]
+
+  @@index([sessionId, createdAt])
+}
+
+model DevOsAuditLog {
+  id        String  @id @default(cuid())
+  sessionId String
+  session   DevOsSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  taskId    String?
+  task      DevOsTask?   @relation(fields: [taskId], references: [id])
+
+  actor     String  // planner | orchestrator | executor | auditor | guard | user
+  action    String
+  target    String?
+  input     Json    @default("{}")
+  output    Json    @default("{}")
+  status    String  @default("success") // success | error | skipped
+  reason    String?
+  tokensUsed Int?
+  durationMs Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([sessionId, createdAt])
+}
+
+// ==================== EXECUTION TRACKER (Agent Pipeline Observability) ====================
+
+model DevOsExecutionRun {
+  id          String  @id @default(cuid())
+  tenantId    String
+  userId      String
+
+  // Source linkage
+  projectId   String?
+  sessionId   String?
+
+  // Source prompt data
+  objective       String  @db.Text
+  scope           String  @db.Text
+  promptPayload   Json    @default("{}")
+
+  // Execution classification
+  execution_mode  String  @default("dry-run")  // dry-run | safe | full
+  risk_level      String  @default("medium")   // low | medium | high
+  risk_score      Int     @default(0)           // 0–100 numeric risk
+
+  // Lifecycle — full v1.1 status set
+  // PENDING | RUNNING | SUCCESS | PARTIAL_SUCCESS | FAILED | ROLLED_BACK | NEEDS_REVIEW | BLOCKED | DRY_RUN_COMPLETE
+  status          String  @default("PENDING")
+  result_summary  String? @db.Text
+
+  // Performance
+  total_duration_ms Int?
+  steps_completed   Int     @default(0)
+  steps_failed      Int     @default(0)
+
+  // Rollback Plan (logical snapshot — no infra required)
+  rollback_snapshot Json  @default("{\"affected_scope\":[], \"reversible_actions\":[], \"irreversible_actions\":[]}")
+
+  // Environment segregation
+  environment       String  @default("dev")      // dev | staging | prod
+  
+  // Promotion Linkage (Prod runs must refer to a successful Staging run)
+  promotion_of_run_id String?
+  
+  // Clearance TTL from ValidatorAgent
+  clearance_token   String?
+  clearance_expires DateTime?
+
+  steps     DevOsExecutionStep[]
+
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, projectId, createdAt])
+  @@index([tenantId, risk_score])
+}
+
+model DevOsExecutionStep {
+  id          String  @id @default(cuid())
+  runId       String
+  run         DevOsExecutionRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  index       Int               // Order of step in execution_plan (0-based)
+  step        String            // Description text from execution_plan
+  status      String  @default("PENDING") // PENDING | RUNNING | DONE | ERROR | SKIPPED
+
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  duration_ms Int?
+  error       String?  @db.Text
+
+  createdAt   DateTime @default(now())
+
+  @@index([runId, index])
+  @@index([runId, status])
+}
+
+// --- PHASE 12: BUDGET INTELLIGENCE MODELS ---
+
+enum DevOsBudgetStatus {
+  ACTIVE
+  WARNING
+  CRITICAL
+  BLOCKED
+}
+
+model DevOsBudget {
+  id                String            @id @default(cuid())
+  tenantId          String            @unique
+  monthlyBudget     Float             @default(50.0)
+  currentSpend      Float             @default(0.0)
+  reservedSpend     Float             @default(0.0)
+  predictedSpend    Float             @default(0.0)
+  remainingBudget   Float             @default(50.0)
+  
+  budgetCycleStart  DateTime          @default(now())
+  budgetCycleEnd    DateTime
+  
+  alertThreshold80  Boolean           @default(false)
+  alertThreshold100 Boolean           @default(false)
+  
+  status            DevOsBudgetStatus @default(ACTIVE)
+  
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  
+  logs              DevOsBudgetLog[]
+}
+
+model DevOsBudgetPolicy {
+  id                        String   @id @default(cuid())
+  tenantId                  String   @unique
+  maxCostPerExecution       Float    @default(0.50)
+  allowModelUpgrade         Boolean  @default(true)
+  allowDelayForSavings      Boolean  @default(true)
+  allowAutoDowngrade        Boolean  @default(true)
+  allowExecutionUnderCritical Boolean @default(true)
+  priorityOverrideEnabled   Boolean  @default(true)
+  autoBlockNonCritical      Boolean  @default(false)
+  gracePercentage           Float    @default(20.0) // Support for 120% hard limit
+  active                    Boolean  @default(true)
+  
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+}
+
+enum DevOsBudgetLogType {
+  RESERVE
+  COMMIT
+  RELEASE
+  REFUND
+  DOWNGRADE_SAVINGS
+  BLOCK_PREVENTION
+}
+
+model DevOsBudgetLog {
+  id          String             @id @default(cuid())
+  tenantId    String
+  budget      DevOsBudget        @relation(fields: [tenantId], references: [tenantId])
+  jobId       String?
+  runId       String?
+  amount      Float
+  type        DevOsBudgetLogType
+  status      String             @default("SUCCESS") // SUCCESS | FAILED
+  reason      String?            @db.Text
+  metadata    Json?
+  
+  createdAt   DateTime           @default(now())
+  
+  @@index([tenantId, createdAt])
+  @@index([runId])
+}
+// --- PHASE 14: HUMAN APPROVAL & COMMAND CENTER ---
+
+enum DevOsApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum DevOsApprovalLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model DevOsApprovalRequest {
+  id              String            @id @default(cuid())
+  tenantId        String
+  jobId           String
+  runId           String?           @unique
+  status          DevOsApprovalStatus @default(PENDING)
+  approvalLevel   DevOsApprovalLevel
+  
+  reasons         Json              @default("[]")
+  payloadSnapshot Json              @default("{}")
+  contextSnapshot Json              @default("{}") // strategy, model, cost, risk
+  
+  estimatedCost   Float             @default(0.0)
+  estimatedRisk   Int               @default(0)
+  
+  approvedBy      String?
+  approvedAt      DateTime?
+  rejectedReason  String?
+  
+  expiresAt       DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  logs            DevOsApprovalLog[]
+
+  @@index([tenantId, status])
+  @@index([jobId])
+}
+
+model DevOsApprovalLog {
+  id              String            @id @default(cuid())
+  requestId       String
+  request         DevOsApprovalRequest @relation(fields: [requestId], references: [id])
+  actor           String            // userId or "system"
+  action          String            // APPROVE, REJECT, EXPIRE, EDIT
+  reason          String?           @db.Text
+  metadata        Json?             @default("{}")
+  
+  createdAt       DateTime          @default(now())
+}
+
+model DevOsExecutionGraph {
+  id        String   @id @default(cuid())
+  jobId     String
+  tenantId  String
+  runId     String   @unique
+  run       DevOsJobRun @relation(fields: [runId], references: [id])
+  nodes     Json     // Array of Node Objects
+  edges     Json     // Array of Edge Objects
+  metadata  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([jobId])
+  @@index([runId])
+}
+
+enum DevOsNodeStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+}
+
+enum DevOsNodeType {
+  INPUT
+  GOVERNANCE
+  BUDGET
+  SCORING
+  APPROVAL
+  ORCHESTRATOR
+  AGENT
+  AGENT_DECISION
+  AGENT_HANDOFF
+  AGENT_MERGE
+  AGENT_FALLBACK
+  AGENT_TIMEOUT
+  EXECUTION
+  RETRY
+  REPLAN
+  COMMIT
+  FAILURE
+}
+
+model DevOsPolicy {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  isActive  Boolean  @default(true)
+  config    Json     // Detail configuration (maxAutoApproveCost, riskThreshold, allowedModels, etc.)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+model DevOsAgentRegistry {
+  id              String   @id @default(cuid())
+  tenantId        String
+  agentKey        String   @unique
+  name            String
+  role            String
+  specialization  String
+  description     String?  @db.Text
+  isActive        Boolean  @default(true)
+  allowedModules  Json?    @default("[]")
+  allowedIntents  Json?    @default("[]")
+  preferredModel  String?  @default("gpt-4o")
+  fallbackAgentKey String?
+  executionMode   String   @default("auto") // auto | manual
+  
+  config          Json?    @default("{}") // Extra config per agent
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([tenantId, agentKey])
+}
+
+model DevOsAgentExecutionLog {
+  id              String   @id @default(cuid())
+  tenantId        String
+  jobId           String
+  runId           String
+  agentKey        String
+  status          String   // SUCCESS, FAILED, HANDOFF, TIMEOUT
+  cost            Float    @default(0)
+  durationMs      Int      @default(0)
+  confidence      Float    @default(0)
+  
+  inputSummary    String?  @db.Text
+  outputSummary   String?  @db.Text
+  handoffTarget   String?  // Target agent key if handoff occurred
+  
+  metadata        Json?    @default("{}")
+  createdAt       DateTime @default(now())
+
+  @@index([tenantId, runId])
+  @@index([agentKey])
+}
+
+// FASE 18 — SAAS PRODUCTIZATION
+
+model DevOsWallet {
+  id              String   @id @default(cuid())
+  tenantId        String   @unique
+  balance         Float    @default(0)
+  reservedBalance Float    @default(0)
+  totalConsumed   Float    @default(0)
+  currency        String   @default("USD")
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+model DevOsCreditTransaction {
+  id          String   @id @default(cuid())
+  tenantId    String
+  type        DevOsTransactionType
+  amount      Float
+  reference   String?  // jobId, runId or stripeSessionId
+  status      String   @default("COMPLETED") // COMPLETED, PENDING, FAILED
+  metadata    Json?    @default("{}")
+  
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([reference])
+}
+
+enum DevOsTransactionType {
+  CREDIT
+  DEBIT
+  RESERVE
+  RELEASE
+}
+
+model DevOsSubscription {
+  id          String    @id @default(cuid())
+  tenantId    String    @unique
+  plan        DevOsPlan @default(FREE)
+  status      String    @default("ACTIVE")
+  
+  limits      Json?     @default("{}") // { maxJobsPerMonth: 100, maxBudget: 50, etc }
+  
+  startedAt   DateTime  @default(now())
+  expiresAt   DateTime?
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([tenantId])
+}
+
+enum DevOsPlan {
+  FREE
+  STARTER
+  PRO
+  ENTERPRISE
+}
+
+model DevOsOnboarding {
+  id          String   @id @default(cuid())
+  tenantId    String   @unique
+  currentStep Int      @default(1)
+  data        Json     @default("{}") // Persistent state of each onboarding step
+  completed   Boolean  @default(false)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId])
 }

@@ -4,6 +4,11 @@ import { PrismaAdapter } from '@next-auth/prisma-adapter';
 import { prisma } from '@/lib/db';
 import bcrypt from 'bcryptjs';
 
+const secret = process.env.NEXTAUTH_SECRET;
+const url = process.env.NEXTAUTH_URL;
+
+console.log(`[AUTH-DEBUG] System Init - URL: ${url} | Secret Hash: ${secret?.substring(0, 4)}...${secret?.substring(secret.length - 4)}`);
+
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
   providers: [
@@ -52,6 +57,7 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
+        console.log(`[AUTH-DEBUG] JWT Callback - Updating token for user: ${user.id}`);
         token.id = user.id;
         token.role = (user as { role?: string })?.role;
         token.tenantId = (user as { tenantId?: string })?.tenantId;
